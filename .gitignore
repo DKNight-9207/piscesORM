@@ -1,0 +1,14 @@
+# personal folder
+.vscode/
+log/
+
+# cache
+__pycache__/
+*.pyc
+**/__pycache__/
+
+# not a bot data
+update.bat
+translation_report.txt
+test.py
+test.db
