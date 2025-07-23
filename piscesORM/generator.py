@@ -78,7 +78,7 @@ class SQLiteGenerator(BasicGenerator):
             # 這是 SQLite 的唯一合法形式：INTEGER PRIMARY KEY AUTOINCREMENT
             if column.primary_key and column.auto_increment and column.type == "INTEGER":
                 parts.append("PRIMARY KEY AUTOINCREMENT")
-
+                # 不要再於後面補 PRIMARY KEY
             else:
                 if column.not_null:
                     parts.append("NOT NULL")
@@ -92,12 +92,16 @@ class SQLiteGenerator(BasicGenerator):
             if column.primary_key:
                 pk_fields.append(name)
 
+        # 修正：如果已經在欄位加了 PRIMARY KEY AUTOINCREMENT，就不要再加 PRIMARY KEY
+        # 單一主鍵且不是自增主鍵時才補 PRIMARY KEY
         if len(pk_fields) == 1:
-            # 單一主鍵可以直接寫在欄位
-            for i, name in enumerate(table._columns):
-                col = table._columns[name]
-                if col.primary_key:
-                    column_defs[i] += " PRIMARY KEY"
+            pk_name = pk_fields[0]
+            col = table._columns[pk_name]
+            if not (col.primary_key and col.auto_increment and col.type == "INTEGER"):
+                # 找到該欄位加 PRIMARY KEY
+                for i, name in enumerate(table._columns):
+                    if name == pk_name:
+                        column_defs[i] += " PRIMARY KEY"
         elif len(pk_fields) > 1:
             column_defs.append(f"PRIMARY KEY ({', '.join(pk_fields)})")
         elif not table.__no_primary_key__:
@@ -258,4 +262,4 @@ def parse_filter(table:Table, filters: dict) -> tuple[str, list]:
         else:
             conditions.append(f"{key} = ?")
             values.append(col.to_db(value))
-    return " AND ".join(conditions), values   
+    return " AND ".join(conditions), values

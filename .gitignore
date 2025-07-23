@@ -10,5 +10,6 @@ __pycache__/
 # not a bot data
 update.bat
 translation_report.txt
-test.py
+example.py
 test.db
+git_note.txt

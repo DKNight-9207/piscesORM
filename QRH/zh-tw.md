@@ -1,9 +1,9 @@
 # PiscesORM 使用手冊
 
 ## 📚 模組總覽
-- [column 欄位]()
-- [operator 運算子]()
-- [table 資料表]()
+- [column 欄位](#piscesormcolumn-欄位)
+- [operator 運算子](#piscesormoperator-運算子)
+- [table 資料表](#piscesormtable-資料表)
 - [engine 引擎]()
 - [session ]()
 - [lock 鎖]()
@@ -33,15 +33,6 @@
 - `normalize_default(default: Any) -> Any`：預設值預處理
 
 </details>
-<details>
-<summary><strong>class Relationship</strong></summary>
-
-此類為關聯記號，資料庫搜尋後隨後會加載指定目標
-- `table: Table`：關聯的表
-- `plural_data: bool`：一對多關聯，若為`True`時此欄會是`list[Table]`
-- `**filter`：過濾條件
-</details>
-
 
 <details>
 <summary><strong>class Integer / Text / Blob / Real</strong></summary>
@@ -86,6 +77,32 @@
 <summary><strong>class EnumArray</strong></summary>
 
 官方特殊型別，和上者相同，不過取出後會是`list[Enum]`
+</details>
+
+<details>
+<summary><strong>class Relationship</strong></summary>
+
+此類為關聯記號，資料庫搜尋後隨後會加載指定目標
+- `table: Table`：關聯的表
+- `plural_data: bool`：一對多關聯，若為`True`時此欄會是`list[Table]`
+- `**filter`：過濾條件
+</details>
+
+<details>
+<summary><strong>class FieldRef</strong></summary>
+
+此類為關聯特殊標記，代表關聯值來自自身，應該事後解析
+- `name: str`：關聯的自身欄位
+```py
+class Author(Table):
+    name: str = Text()
+    age: int = Integer()
+
+class Book(Table):
+    author_name: str = Text()
+    author: Author = Relationship(Author, name = FieldRef("author_name"))
+    # 這邊的意思是，從Author這個表尋找 name = self.author_name 的資料
+```
 </details>
 
 ---
@@ -150,5 +167,31 @@
 - `__abstract__: bool`：為`False`時，ORM不會自動創建此表
 - `__table_name__: str`：自訂義資料表名稱，沒指定時會是類名
 - `__no_primary_key__: bool`：為`True`時，ORM會允許該表沒有主鍵，不過會失去"ORM更新資料"功能
+
+### 基本用法
+```py
+from __future__ import annotations
+from piscesORM.table import Table
+from piscesORM.column import Text, Integer 
+from piscesORM.engine import SyncSQLiteEngine
+
+class Log(Table):
+    __table_name__ = "log"
+    __no_primary_key__ = True
+
+    time: int = Integer()
+    level: str = Text()
+    message: str = Text()
+
+class MemberData(Table):
+    __table_name__ = "member_data"
+
+    guild_id: int = Integer(primary_key=True)
+    member_id: int = Integer(primary_key=True)
+
+engine = SyncSQLiteEngine("./database.db")
+with engine.session() as session:
+    session.initialize() # 這樣就會自動創建資料庫了
+```
 
 ---

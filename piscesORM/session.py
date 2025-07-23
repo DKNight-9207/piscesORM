@@ -6,7 +6,7 @@ from typing import Type, List, Any
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from .table import Table, TableMeta
-from .column import Column
+from .column import Column, Relationship, FieldRef
 from . import errors
 from . import generator
 
@@ -422,6 +422,7 @@ class SyncSQLiteSession(SyncBaseSession):
             traces = {obj}
         
         for name, relation in obj._relationship.items():
+            
             related_data = getattr(obj, name, None)
             if related_data is None:
                 continue
@@ -532,13 +533,24 @@ class SyncSQLiteSession(SyncBaseSession):
             if structure_update:
                 self.update_table_structure(table, rebuild)
 
+    def _resolve_filter(self, obj, filter_dict):
+        resolved = {}
+        for k, v in filter_dict.items():
+            if isinstance(v, FieldRef):
+                resolved[k] = getattr(obj, v.name)
+            else:
+                resolved[k] = v
+        return resolved
+
     def _load_relationship(self, obj, _traces=None):
         if _traces is None:
             _traces = {obj.__hash__():obj}
 
         for name, relation in obj._relationship.items():
+            # 解析 filter 裡的 FieldRef
+            resolved_filter = self._resolve_filter(obj, relation.filter)
             if relation.plural_data:
-                table_data = self.get_all(relation.table, **relation.filter)
+                table_data = self.get_all(relation.table, **resolved_filter)
                 if not table_data:
                     continue
                 for item in table_data:
@@ -547,7 +559,7 @@ class SyncSQLiteSession(SyncBaseSession):
                     _traces[item.__hash__()] = item
                     self._load_relationship(item, _traces)
             else:
-                table_data = self.get_first(relation.table, **relation.filter)
+                table_data = self.get_first(relation.table, **resolved_filter)
                 if table_data is None:
                     continue
                 if table_data.__hash__() in _traces:
