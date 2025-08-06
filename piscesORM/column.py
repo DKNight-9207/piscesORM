@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 import json
 import logging
 from enum import Enum
 from . import errors
+from .base import TABLE_REGISTRY
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 logger = logger = logging.getLogger("piscesORM")
@@ -199,10 +200,18 @@ class EnumArray(Column):
 
 
 class Relationship:
-    def __init__(self, table:type["Table"], plural_data=False, **filter):
+    def __init__(self, table:Union[type["Table"], str], plural_data=False, **filter):
         self.table = table
         self.plural_data = plural_data
         self.filter = filter
+
+    def get_table(self):
+        if isinstance(self.table, str):
+            t = TABLE_REGISTRY.get(self.table, None)
+            if not t:
+                raise errors.TableNotFound(self.table)
+            return t
+        return self.table
 
 class FieldRef:
     def __init__(self, name:str):

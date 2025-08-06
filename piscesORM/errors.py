@@ -25,6 +25,11 @@ class InsertPrimaryKeyColumn(PiscesError):
             "To apply this change, enable 'rebuild' mode to recreate the table and migrate the data."
         )
         super().__init__(message)
+
+class TableNotFound(PiscesError):
+    def __init__(self, table_name):
+        message = f"Table '{table_name}' not found in registry."
+        super().__init__(message)
         
 PROTECT_NAME = set([
     # table protected val
@@ -52,3 +57,34 @@ class NoSuchColumn(PiscesError):
     def __init__(self, column_name: str):
         message = f"No such column: '{column_name}'"
         super().__init__(message)
+
+# Lock errors
+class LockError(PiscesError):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+class NotYourLockError(LockError):
+    def __init__(self, user:str, owner:str):
+        message = f"Lock is held by {owner}, but {user} is trying to release it."
+        super().__init__(message)
+
+class LockNotAcquiredError(LockError):
+    def __init__(self, user:str, key:str):
+        message = f"{user} tried to release a lock for key '{key}' that was not acquired."
+        super().__init__(message)
+
+class UserAlreadyLogin(LockError):
+    def __init__(self, user:str):
+        message = f"The user: {user} already login the lock manager"
+        super().__init__(message)
+
+class LockObjectCollected(LockError):
+    def __init__(self):
+        message = f"The Lock have been collected by manager. Maybe you hold lock overtime."
+        super().__init__(message)
+
+class MissingLock(LockError):
+    def __init__(self, missing_keys: list[str]):
+        message = f"you missing the current key: \n"
+        message += "\n".join(missing_keys)
+        return super().__init__(message)

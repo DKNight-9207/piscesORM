@@ -5,10 +5,11 @@ import sqlite3
 from typing import Type, List, Any
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from .table import Table, TableMeta
+from .table import Table
 from .column import Column, Relationship, FieldRef
 from . import errors
 from . import generator
+from .base import TABLE_REGISTRY
 
 class AsyncBaseSession(ABC):
     def __init__(self, connection: Any, mode="r", auto_commit: bool = True):
@@ -282,7 +283,7 @@ class AsyncSQLiteSession(AsyncBaseSession):
             await self._conn.commit()
 
     async def initialize(self, structure_update=False, rebuild=False):
-        for table in TableMeta._registry:
+        for table in TABLE_REGISTRY.values():
             await self.create_table(table, True)
             if structure_update:
                 await self.update_table_structure(table, rebuild)
@@ -293,7 +294,7 @@ class AsyncSQLiteSession(AsyncBaseSession):
 
         for name, relation in obj._relationship.items():
             if relation.plural_data:
-                table_data = await self.get_all(relation.table, **relation.filter)
+                table_data = await self.get_all(relation.get_table(), load_relationships=False, **relation.filter)
                 if not table_data:
                     continue
                 for item in table_data:
@@ -302,7 +303,7 @@ class AsyncSQLiteSession(AsyncBaseSession):
                     _traces[item.__hash__()] = item
                     await self._load_relationship(item, _traces)
             else:
-                table_data = await self.get_first(relation.table, **relation.filter)
+                table_data = await self.get_first(relation.get_table(), load_relationships=False, **relation.filter)
                 if table_data is None:
                     continue
                 if table_data.__hash__() in _traces:
@@ -310,6 +311,11 @@ class AsyncSQLiteSession(AsyncBaseSession):
                 _traces[obj.__hash__()] = table_data
                 await self._load_relationship(table_data, _traces)
             setattr(obj, name, table_data)
+
+class AsyncSQLiteLockSession(AsyncSQLiteSession):
+    def __init__(self, connection, mode="r", auto_commit = True):
+        super().__init__(connection, mode, auto_commit)
+        self.mode = mode
 
 class SyncSQLiteSession(SyncBaseSession):
     def __init__(self, connection: sqlite3.Connection, mode="r", auto_commit: bool = True):
@@ -528,7 +534,7 @@ class SyncSQLiteSession(SyncBaseSession):
             self._conn.commit()
 
     def initialize(self, structure_update=False, rebuild=False):
-        for table in TableMeta._registry:
+        for table in TABLE_REGISTRY.values():
             self.create_table(table, True)
             if structure_update:
                 self.update_table_structure(table, rebuild)
@@ -550,7 +556,7 @@ class SyncSQLiteSession(SyncBaseSession):
             # 解析 filter 裡的 FieldRef
             resolved_filter = self._resolve_filter(obj, relation.filter)
             if relation.plural_data:
-                table_data = self.get_all(relation.table, **resolved_filter)
+                table_data = self.get_all(relation.get_table(), load_relationships=False, **resolved_filter)
                 if not table_data:
                     continue
                 for item in table_data:
@@ -559,7 +565,7 @@ class SyncSQLiteSession(SyncBaseSession):
                     _traces[item.__hash__()] = item
                     self._load_relationship(item, _traces)
             else:
-                table_data = self.get_first(relation.table, **resolved_filter)
+                table_data = self.get_first(relation.get_table(), load_relationships=False, **resolved_filter)
                 if table_data is None:
                     continue
                 if table_data.__hash__() in _traces:

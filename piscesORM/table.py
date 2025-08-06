@@ -5,11 +5,11 @@ import logging
 from enum import Enum
 from . import errors
 from .column import Column, Relationship, FieldRef
+from .base import TABLE_REGISTRY
 logger = logger = logging.getLogger("piscesORM")
 
 
 class TableMeta(type):
-    _registry = []
 
     def __new__(cls, name, bases, attrs):
         columns: Dict[str, Column] = {}
@@ -36,7 +36,7 @@ class TableMeta(type):
 
         new_cls = super().__new__(cls, name, bases, attrs)
         if not attrs.get("__abstract__", False):
-            TableMeta._registry.append(new_cls)
+            TABLE_REGISTRY[name]=new_cls
         return new_cls
 
 class Table(metaclass=TableMeta):
@@ -98,8 +98,11 @@ class Table(metaclass=TableMeta):
         return hash(self._get_pks())
     
     def __eq__(self, value):
-        if isinstance(value, Table):
-            return self._get_pks() == value._get_pks()
+        if isinstance(value, self.__class__):
+            pks = self._get_pks()
+            if pks:
+                return pks == value._get_pks()
+            return super().__eq__(value)
         return False
     
     def __ne__(self, value):
@@ -123,10 +126,6 @@ class Table(metaclass=TableMeta):
                 
 
         return obj
-
-    @classmethod
-    def get_subclasses(cls):
-        return TableMeta._registry
 
     @classmethod
     def get_primary_keys(cls) -> list[str]:
