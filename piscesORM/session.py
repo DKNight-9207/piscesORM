@@ -19,12 +19,6 @@ class AsyncBaseSession(ABC):
         self._auto_commit = auto_commit
 
     @abstractmethod
-    async def __aenter__(self): ...
-
-    @abstractmethod
-    async def __aexit__(self, exc_type, exc, tb): ...
-
-    @abstractmethod
     async def execute(self, sql, value: Any): ...
 
     @abstractmethod
@@ -64,12 +58,6 @@ class SyncBaseSession(ABC):
         self._auto_commit = auto_commit
 
     @abstractmethod
-    def __enter__(self): ...
-
-    @abstractmethod
-    def __exit__(self, exc_type, exc, tb): ...
-
-    @abstractmethod
     def execute(self, sql, value: Any): ...
 
     @abstractmethod
@@ -105,17 +93,9 @@ class SyncBaseSession(ABC):
 class AsyncSQLiteSession(AsyncBaseSession):
     def __init__(self, connection: aiosqlite.Connection, mode="r", auto_commit: bool = True):
         self._conn = connection
+        self._conn.row_factory = sqlite3.Row
         self._auto_commit = auto_commit
         self._generator = generator.SQLiteGenerator
-
-    async def __aenter__(self):
-        self._conn.row_factory = aiosqlite.Row
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        if self._conn:
-            await self._conn.commit()
-            await self._conn.close()
 
     async def execute(self, sql:str, value=None):
         return await self._conn.execute(sql, value)
@@ -147,7 +127,7 @@ class AsyncSQLiteSession(AsyncBaseSession):
         if not objs:
             return
         
-        sql = self._generator.generate_insert(objs[0])
+        sql, _ = self._generator.generate_insert(objs[0])
         all_values = [self._generator.generate_insert(obj)[1] for obj in objs]
 
         try:
@@ -158,66 +138,51 @@ class AsyncSQLiteSession(AsyncBaseSession):
             raise errors.PrimaryKeyConflict()
 
     async def filter(self, table: Type[Table], **kwargs) -> List[Table]:
-        table_name = table.__table_name__ or table.__name__
-        sql = f"SELECT * FROM {table_name}"
-        values = []
-
-        if kwargs:
-            conditions = []
-            for key, value in kwargs.items():
-                if key not in table._columns:
-                    raise ValueError(f"Unknown column name: {key}")
-                column = table._columns[key]
-                conditions.append(f"{key} = ?")
-                values.append(value)
-            sql += " WHERE " + " AND ".join(conditions)
+        sql, values = self._generator.generate_select(table, **kwargs)
 
         async with self._conn.execute(sql, values) as cursor:
             rows = await cursor.fetchall()
             objs = [table.from_row(dict(row)) for row in rows]
             return objs
 
-    async def get_first(self, table: Type[Table], load_relationships = True, read_only = False, **kwargs) -> Table | None:
+    async def get_first(self, table: Type[Table], load_relationships = True, **kwargs) -> Table | None:
         result = await self.filter(table, **kwargs)
         if result is not None:
             result = result[0]
             if load_relationships:
                 await self._load_relationship(result)
+            result._initialized = True
         return result if result else None
 
-    async def get_all(self, table: Type[Table], load_relationships = True, read_only = False, **kwargs) -> List[Table]:
+    async def get_all(self, table: Type[Table], load_relationships = True, **kwargs) -> List[Table]:
         result = await self.filter(table, **kwargs)
         for obj in result:
             if load_relationships:
                 await self._load_relationship(obj)
+            obj._initialized = True
         return result
 
-    async def update(self, obj: Table, merge: bool=True) -> None:
-        sql, values = self._generator.generate_update(obj, merge=merge)
-        cursor = await self._conn.execute(sql, values)
+    async def update(self, obj: Table, merge: bool=True, update_relationship: bool=True) -> None:
+        # update relationships
+        if update_relationship:
+            traces = {obj}
+            await self._update_relationship(obj, traces=traces)
+        else:
+            sql, values = self._generator.generate_update(obj, merge=merge)
+            await self._conn.execute(sql, values)
 
         if self._auto_commit:
             await self._conn.commit()
 
     async def delete(self, obj: Table) -> None:
         sql, values = self._generator.generate_delete(obj)
-        cursor = await self._conn.execute(sql, values)
+        await self._conn.execute(sql, values)
 
         if self._auto_commit:
             await self._conn.commit()
 
     async def count(self, table: Table, **kwargs) -> int:
-        table_name = table.__table_name__ or table.__name__
-        sql = f"SELECT COUNT(*) FROM {table_name}"
-        values = []
-        if kwargs:
-            conditions = []
-            for key, value in kwargs.items():
-                if key not in table._columns:
-                    raise ValueError(f"Unknown column name: {key}")
-                conditions.append(f"{key} = ?")
-                values.append()
-            sql += " WHERE " + " AND ".join(conditions)
+        sql, values = self._generator.generate_count(table, **kwargs)
 
         async with self._conn.execute(sql, values) as cursor:
             row = await cursor.fetchone()
@@ -287,14 +252,26 @@ class AsyncSQLiteSession(AsyncBaseSession):
             await self.create_table(table, True)
             if structure_update:
                 await self.update_table_structure(table, rebuild)
+                
+    def _resolve_filter(self, obj, filter_dict):
+        resolved = {}
+        for k, v in filter_dict.items():
+            if isinstance(v, FieldRef):
+                resolved[k] = getattr(obj, v.name)
+            else:
+                resolved[k] = v
+        return resolved
 
     async def _load_relationship(self, obj, _traces=None):
         if _traces is None:
             _traces = {obj.__hash__():obj}
 
         for name, relation in obj._relationship.items():
+            # 解析 filter 裡的 FieldRef
+            resolved_filter = self._resolve_filter(obj, relation.filter)
+            
             if relation.plural_data:
-                table_data = await self.get_all(relation.get_table(), load_relationships=False, **relation.filter)
+                table_data = await self.get_all(relation.get_table(), load_relationships=False, **resolved_filter)
                 if not table_data:
                     continue
                 for item in table_data:
@@ -303,7 +280,7 @@ class AsyncSQLiteSession(AsyncBaseSession):
                     _traces[item.__hash__()] = item
                     await self._load_relationship(item, _traces)
             else:
-                table_data = await self.get_first(relation.get_table(), load_relationships=False, **relation.filter)
+                table_data = await self.get_first(relation.get_table(), load_relationships=False, **resolved_filter)
                 if table_data is None:
                     continue
                 if table_data.__hash__() in _traces:
@@ -311,6 +288,31 @@ class AsyncSQLiteSession(AsyncBaseSession):
                 _traces[obj.__hash__()] = table_data
                 await self._load_relationship(table_data, _traces)
             setattr(obj, name, table_data)
+
+    async def _update_relationship(self, obj: Table, traces: set[Table] = None) -> None:
+        if traces is None:
+            traces = {obj}
+        
+        for name, relation in obj._relationship.items():
+            
+            related_data = getattr(obj, name, None)
+            if related_data is None:
+                continue
+            if relation.plural_data:
+                for item in related_data:
+                    if item in traces:
+                        continue
+                    sql, values = self._generator.generate_update(item, merge=True)
+                    await self._conn.execute(sql, values)
+                    await self._update_relationship(item, traces)
+                    traces.add(item)
+            else:
+                if related_data in traces:
+                    continue
+                sql, values = self._generator.generate_update(related_data, merge=True)
+                await self._conn.execute(sql, values)
+                await self._update_relationship(related_data, traces)
+                traces.add(related_data)
 
 class AsyncSQLiteLockSession(AsyncSQLiteSession):
     def __init__(self, connection, mode="r", auto_commit = True):
@@ -323,14 +325,6 @@ class SyncSQLiteSession(SyncBaseSession):
         self._conn.row_factory = sqlite3.Row
         self._auto_commit = auto_commit
         self._generator = generator.SQLiteGenerator
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        if self._conn:
-            self._conn.commit()
-            self._conn.close()
 
     def execute(self, sql:str, value=None):
         return self._conn.execute(sql, value or [])
@@ -375,17 +369,7 @@ class SyncSQLiteSession(SyncBaseSession):
     
     def filter(self, table: Type[Table], **kwargs) -> List[Table]:
         table_name = table.__table_name__ or table.__name__
-        sql = f"SELECT * FROM {table_name}"
-        values = []
-
-        if kwargs:
-            conditions = []
-            for key, value in kwargs.items():
-                if key not in table._columns:
-                    raise ValueError(f"Unknown column name: {key}")
-                conditions.append(f"{key} = ?")
-                values.append(value)
-            sql += " WHERE " + " AND ".join(conditions)
+        sql, values = self._generator.generate_select(table, **kwargs)
 
         cursor = self._conn.execute(sql, values)
         rows = cursor.fetchall()

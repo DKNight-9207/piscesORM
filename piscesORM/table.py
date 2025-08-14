@@ -6,6 +6,7 @@ from enum import Enum
 from . import errors
 from .column import Column, Relationship, FieldRef
 from .base import TABLE_REGISTRY
+from ._setting import setting
 logger = logger = logging.getLogger("piscesORM")
 
 
@@ -66,27 +67,29 @@ class Table(metaclass=TableMeta):
         self._edited.clear()
 
     def __str__(self):
-        from textwrap import shorten
+        if setting.modified_obj_output:
+            from textwrap import shorten
 
-        table_name = self.__table_name__ or self.__class__.__name__
-        lines = []
-        lines.append(f"┌─ Table: {table_name} ─{'─' * (30 - len(table_name))}")
-        lines.append("│ {:<15} {:<12} {:<30}".format("Column", "Type", "Value"))
-        lines.append("├" + "─" * 60)
+            table_name = self.__table_name__ or self.__class__.__name__
+            lines = []
+            lines.append(f"┌─ Table: {table_name} ─{'─' * (30 - len(table_name))}")
+            lines.append("│ {:<15} {:<12} {:<30}".format("Column", "Type", "Value"))
+            lines.append("├" + "─" * 60)
 
-        for name, col in self._columns.items():
-            value = getattr(self, name, None)
-            value_str = str(value)
-            if len(value_str) > 28:
-                value_str = shorten(value_str, width=28, placeholder="...")
+            for name, col in self._columns.items():
+                value = getattr(self, name, None)
+                value_str = str(value)
+                if len(value_str) > 28:
+                    value_str = shorten(value_str, width=28, placeholder="...")
 
-            edited_mark = "*" if name in self._edited else " "
-            lines.append("│{:<1} {:<14} {:<12} {:<30}".format(
-                edited_mark, name, col.__class__.__name__, value_str
-            ))
+                edited_mark = "*" if name in self._edited else " "
+                lines.append("│{:<1} {:<14} {:<12} {:<30}".format(
+                    edited_mark, name, col.__class__.__name__, value_str
+                ))
 
-        lines.append("└" + "─" * 60)
-        return "\n".join(lines)
+            lines.append("└" + "─" * 60)
+            return "\n".join(lines)
+        return super().__str__()
     
     def _get_pks(self):
         pk = [ v for v in self._columns.values() if v.primary_key]
@@ -101,7 +104,7 @@ class Table(metaclass=TableMeta):
         if isinstance(value, self.__class__):
             pks = self._get_pks()
             if pks:
-                return pks == value._get_pks()
+                return pks == value._get_pks() 
             return super().__eq__(value)
         return False
     

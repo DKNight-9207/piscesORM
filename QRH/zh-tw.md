@@ -157,9 +157,6 @@ class Book(Table):
 
 ## piscesORM.table 資料表
 
-<strong> class TableMeta </strong>
-基本資料表創建器，自訂義基本表時設定metaclass=TableMeta
-
 <strong> class Table </strong>
 基本資料表，創建表時請繼承它
 
@@ -190,8 +187,57 @@ class MemberData(Table):
     member_id: int = Integer(primary_key=True)
 
 engine = SyncSQLiteEngine("./database.db")
-with engine.session() as session:
-    session.initialize() # 這樣就會自動創建資料庫了
+engine.initilize()# 這樣就會自動創建資料庫了
 ```
-
 ---
+
+## piscesORM.engine 引擎
+為了簡化資料庫設定的上手難度，所以具體的資料庫類型等並非像其他資料庫通過網址欄位控制，而是通過選擇引擎來實現
+
+<details>
+<summary><strong>class SyncBaseEngine/AsyncBaseEngine 基本同步/異步引擎</strong></summary>
+這是一個抽象基底類，用來規範統一基本接口
+</details>
+
+<details>
+<summary><strong>class AsyncSQLiteEngine SQLite異步引擎</strong></summary>
+
+### 初始化欄位：
+- `db_path`: 指定 SQLite 檔案的位置，預設為`:memory:`，代表使用內存模式。
+
+### 方法：
+- `session`: 這會回傳一個上下文管理器，所以要用`async with engine.session() as s:`來使用。會自動處理連線的回收等事務
+- `get_session`: 這會回傳一個 Session 物件，這意味著你需要自行管理 Session生命週期
+- `initialize`: 執行初始化
+- `sync_initialize`: 和`initialize`一樣，只是用了`asyncio.run()`包裝，免去使用`await`
+    * `structure_update`: 若結構有異動，是否更新？預設為`False`
+    * `rebuild`: 是否使用重建來解決異動？預設為`False`，但因此只能新增多出來的欄位，不能刪除舊欄位
+    * 回傳值: SyncSQLiteSession()/AsyncSQLiteSession()
+
+</details>
+
+<details>
+<summary><strong>class SyncSQLiteLockEngine SQLite上鎖異步引擎</strong></summary>
+
+注意：這個鎖的原理是悲觀鎖，所以對效能影響略大，但優點是會排隊處理。
+
+
+### 初始化欄位：
+- `db_path`: 指定 SQLite 檔案的位置，預設為`:memory:`，代表使用內存模式。
+- `auto_release`: 設定鎖過期的時間，單位為秒，預設為`0`，表示不啟用。雖然可以確保系統不會完全阻塞，但不保證資源不洩漏，因此應該僅在開發階段使用
+- `read_lock`: 預設為`False`，表示讀取不用鎖，設為`True`時，會進一步保證純讀取時也有資料原子性，但相對性能會下降。
+
+### 方法：
+- `session`: 這會回傳一個上下文管理器，所以要用`async with engine.session() as s:`來使用。會自動處理連線的回收等事務
+- `get_session`: 這會回傳一個 Session 物件，這意味著你需要自行管理 Session生命週期
+    * `mode`: 啟動模式。
+        - `r`: 預設值，表示僅讀取，若嘗試寫入資料庫會報錯。
+        - `w`: 雖然寫作`w`，但實際上也可讀取。此次連線會為每個搜尋上鎖。
+
+- `initialize`: 執行初始化
+- `sync_initialize`: 和`initialize`一樣，只是用了`asyncio.run()`包裝，免去使用`await`
+    * `structure_update`: 若結構有異動，是否更新？預設為`False`
+    * `rebuild`: 是否使用重建來解決異動？預設為`False`，但因此只能新增多出來的欄位，不能刪除舊欄位
+    * 回傳值: AsyncSQLiteLockSession()
+
+</details>

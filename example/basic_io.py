@@ -48,7 +48,7 @@ with engine.session() as session:
     test_author:Author = test_book.author
     print(test_author)
     author_books:list[Book] = test_author.books
-    print(author_books)
+    print([b.title for b in author_books])
 
 
 

@@ -12,23 +12,47 @@ import warnings
 class BasicGenerator(ABC):
     @staticmethod
     @abstractmethod
-    def generate_create_table(table: Type[Table], exist_ok: bool = False) -> str:...
+    def generate_create_table(table: Type[Table], exist_ok: bool = False) -> str:
+        """
+        generate SQL to create table.
+        - table: the table class you want to create.
+        - exist_ok: allow the table is exist. Default is False.
+        """
+        ...
+    
 
     @staticmethod
     @abstractmethod
-    def generate_starcture(table: Type[Table]) -> str: ...
+    def generate_starcture(table: Type[Table]) -> str:
+        """
+        Generate SQL that can check table starcture in database.
+        - table: the table class you want to check.
+        """
+        ...
 
     @staticmethod
     @abstractmethod
-    def generate_insert_column(table: Type[Table], org_starcture:dict) -> list[str]: ...
+    def generate_insert_column(table: Type[Table], org_starcture:dict) -> list[str]: 
+        """
+        
+        """
+        ...
 
     @staticmethod
     @abstractmethod
-    def generate_insert(obj: Table) -> tuple[str, tuple[Any]]: ...
+    def generate_insert(obj: Table) -> tuple[str, tuple[Any]]: 
+        """
+        
+        """
+        ...
 
     @staticmethod
     @abstractmethod
-    def generate_update(obj: Table, merge:bool = True) -> tuple[str, tuple[Any]]: ...
+    def generate_update(obj: Table, merge:bool = True) -> tuple[str, tuple[Any]]: 
+        """
+        
+        """
+        ...
 
     @staticmethod
     @abstractmethod
@@ -49,7 +73,11 @@ class BasicGenerator(ABC):
 
     @staticmethod
     @abstractmethod
-    def generate_index(table: Type[Table]) -> list[str]: ...
+    def generate_index(table: Type[Table]) -> list[str]: 
+        """
+        
+        """
+        ...
 
     @staticmethod
     @abstractmethod
@@ -62,6 +90,10 @@ class BasicGenerator(ABC):
     @staticmethod
     @abstractmethod
     def generate_select(table: Type[Table], **filters) -> tuple[str, list]: ...
+
+    @staticmethod
+    @abstractmethod
+    def generate_count(table: Type[Table], **filters) -> tuple[str, list]: ...
     
 
 
@@ -247,6 +279,20 @@ class SQLiteGenerator(BasicGenerator):
         else:
             values = []
         return sql, values
+    
+    @staticmethod
+    def generate_count(table: Type[Table], **filters) -> tuple[str, list]:
+        table_name = table.__table_name__ or table.__name__
+        sql = f"SELECT COUNT(*) FROM {table_name}"
+        values = []
+        if filters:
+            conditions = []
+            for key, value in filters.items():
+                if key not in table._columns:
+                    raise ValueError(f"Unknown column name: {key}")
+                conditions.append(f"{key} = ?")
+                values.append()
+            sql += " WHERE " + " AND ".join(conditions)
     
 def parse_filter(table:Table, filters: dict) -> tuple[str, list]:
     conditions = []
