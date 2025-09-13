@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, TypeVar, Generic
 import logging
-from .. import LogicalOperator
+from .. import operator
 logger = logger = logging.getLogger("piscesORM")
 
 T = TypeVar('_T')
@@ -78,31 +78,31 @@ class Column(Generic[T]):
 
     # 條件運算子
     def equal(self, value):
-        return LogicalOperator.Equal(self._name, value)
+        return operator.Equal(self._name, value)
     
     def not_equal(self, value):
-        return LogicalOperator.NotEqual(self._name, value)
+        return operator.NotEqual(self._name, value)
 
     def greater_than(self, value):
-        return LogicalOperator.GreaterThan(self._name, value)
+        return operator.GreaterThan(self._name, value)
 
     def greater_equal(self, value):
-        return LogicalOperator.GreaterEqual(self._name, value)
+        return operator.GreaterEqual(self._name, value)
     
     def less_than(self, value):
-        return LogicalOperator.LessThan(self._name, value)
+        return operator.LessThan(self._name, value)
     
     def less_equal(self, value):
-        return LogicalOperator.LessEqual(self._name, value)
+        return operator.LessEqual(self._name, value)
     
     def in_(self, value):
-        return LogicalOperator.In_(self._name, value)
+        return operator.In_(self._name, value)
     
     def like(self, value):
-        return LogicalOperator.Like(self._name, value)
+        return operator.Like(self._name, value)
     
     def ilike(self, value):
-        return LogicalOperator.ILike(self._name, value)
+        return operator.ILike(self._name, value)
     
 
     # 快速調用 (特殊方法)

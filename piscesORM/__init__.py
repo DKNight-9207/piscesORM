@@ -1,6 +1,6 @@
 from . import column
 from . import table
-from . import LogicalOperator
+from . import operator
 from . import generator
 from . import engine
 from . import errors

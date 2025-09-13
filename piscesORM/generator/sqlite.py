@@ -17,10 +17,10 @@ class SQLiteGenerator(BasicGenerator):
         pk_fields = []
 
         for name, column in table._columns.items():
-            parts = [name, column.type]
+            parts = [name, column._type['sqlite']]
 
             # INTEGER PRIMARY KEY AUTOINCREMENT
-            if column.primary_key and column.auto_increment and column.type.upper() == "INTEGER":
+            if column.primary_key and column.auto_increment and column._type['sqlite'] == "INTEGER":
                 parts.append("PRIMARY KEY AUTOINCREMENT")
                 # 不要再於後面補 PRIMARY KEY
             else:
@@ -41,7 +41,7 @@ class SQLiteGenerator(BasicGenerator):
         if len(pk_fields) == 1:
             pk_name = pk_fields[0]
             col = table._columns[pk_name]
-            if not (col.primary_key and col.auto_increment and col.type.upper() == "INTEGER"):
+            if not (col.primary_key and col.auto_increment and col._type['sqlite'] == "INTEGER"):
                 # 找到該欄位加 PRIMARY KEY
                 for i, name in enumerate(table._columns):
                     if name == pk_name:
@@ -71,7 +71,7 @@ class SQLiteGenerator(BasicGenerator):
                 if column.primary_key:
                     raise errors.InsertPrimaryKeyColumn()
                 
-                col_type = column.type
+                col_type = column._type['sqlite']
                 constraints = []
                 if column.not_null:
                     if column.default is None:
