@@ -53,6 +53,7 @@ class Table(metaclass=TableMeta):
 
     def __init__(self, **kwargs):
         self._edited = set()
+        self._session = None
         for name, column in self._columns.items():
             value = kwargs.get(name, column.default)
             setattr(self, name, value)

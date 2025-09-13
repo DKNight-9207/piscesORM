@@ -2,7 +2,7 @@
 
 ## 📚 模組總覽
 - [column 欄位](#piscesormcolumn-欄位)
-- [operator 運算子](#piscesormoperator-運算子)
+- [LogicalOperator 運算子](#piscesormLogicalOperator-運算子)
 - [table 資料表](#piscesormtable-資料表)
 - [engine 引擎]()
 - [session ]()
@@ -107,11 +107,11 @@ class Book(Table):
 
 ---
 
-## piscesORM.operator 運算子
+## piscesORM.LogicalOperator 運算子
 在搜尋條件時，除了可以直接 column=value 做基本`等於`判斷，也可用這裡的標記做進一步的判斷
 
 <details>
-<summary><strong>class Operator</strong></summary>
+<summary><strong>class LogicalOperator</strong></summary>
 
 基本運算子，沒有特別意義
 </details>

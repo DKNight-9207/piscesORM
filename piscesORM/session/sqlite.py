@@ -1,94 +1,14 @@
 from __future__ import annotations
-from unittest import result
 import aiosqlite
 import sqlite3
-from typing import Type, List, Any
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
-from .table import Table
-from .column import Column, Relationship, FieldRef
-from . import errors
-from . import generator
-from .base import TABLE_REGISTRY
+from typing import Type, List
+from ..table import Table
+from ..column import FieldRef
+from .. import errors
+from .. import generator
+from ..base import TABLE_REGISTRY
+from . import AsyncBaseSession, SyncBaseSession
 
-class AsyncBaseSession(ABC):
-    def __init__(self, connection: Any, mode="r", auto_commit: bool = True):
-        """mode: only work on 'Application Lock' engine"""
-        self._conn = connection
-        self.mode = mode
-        self._auto_commit = auto_commit
-
-    @abstractmethod
-    async def execute(self, sql, value: Any): ...
-
-    @abstractmethod
-    async def initialize(self, structure_update=False, rebuild: bool = False): ...
-
-    @abstractmethod
-    async def update_table_structure(self, table: Type[Table], rebuild: bool = False): ...
-
-    @abstractmethod
-    async def create_table(self, table: Type[Table], exist_ok: bool = False): ...
-
-    @abstractmethod
-    async def insert(self, obj: Table): ...
-
-    @abstractmethod
-    async def insert_many(self, objs: List[Table]): ...
-
-    @abstractmethod # org. filter
-    async def get_all(self, table: Type[Table], load_relationships = True, read_only=False, **kwargs) -> List[Table]: ...
-
-    @abstractmethod
-    async def get_first(self, table: Type[Table], load_relationships = True, read_only=False, **kwargs) -> Table: ...
-
-    @abstractmethod
-    async def update(self, obj: Table, merge: bool = False): ...
-
-    @abstractmethod
-    async def delete(self, obj: Table): ...
-
-    @abstractmethod
-    async def _load_relationship(self, obj: Table, _traces:dict[tuple, Table]=None): ...
-
-
-class SyncBaseSession(ABC):
-    def __init__(self, connection: Any, auto_commit: bool = True):
-        self._conn = connection
-        self._auto_commit = auto_commit
-
-    @abstractmethod
-    def execute(self, sql, value: Any): ...
-
-    @abstractmethod
-    def initialize(self, structure_update=False, rebuild: bool = False): ...
-
-    @abstractmethod
-    def update_table_structure(self, table: Type[Table], rebuild: bool = False): ...
-
-    @abstractmethod
-    def create_table(self, table: Type[Table], exist_ok: bool = False): ...
-
-    @abstractmethod
-    def insert(self, obj: Table): ...
-
-    @abstractmethod
-    def insert_many(self, objs: List[Table]): ...
-
-    @abstractmethod # org. filter
-    def get_all(self, table: Type[Table], load_relationships = True, **kwargs) -> List[Table]: ...
-
-    @abstractmethod
-    def get_first(self, table: Type[Table], load_relationships = True, **kwargs) -> Table: ...
-
-    @abstractmethod
-    def update(self, obj: Table, merge: bool = False): ...
-
-    @abstractmethod
-    def delete(self, obj: Table): ...
-
-    @abstractmethod
-    def _load_relationship(self, obj: Table, _traces:dict[tuple, Table]=None): ...
 
 class AsyncSQLiteSession(AsyncBaseSession):
     def __init__(self, connection: aiosqlite.Connection, mode="r", auto_commit: bool = True):
@@ -96,6 +16,13 @@ class AsyncSQLiteSession(AsyncBaseSession):
         self._conn.row_factory = sqlite3.Row
         self._auto_commit = auto_commit
         self._generator = generator.SQLiteGenerator
+
+    async def on_connected(self):
+        try:
+            await self.execute("SELECT 1")
+            return True
+        except:
+            return False
 
     async def execute(self, sql:str, value=None):
         return await self._conn.execute(sql, value)
@@ -325,6 +252,13 @@ class SyncSQLiteSession(SyncBaseSession):
         self._conn.row_factory = sqlite3.Row
         self._auto_commit = auto_commit
         self._generator = generator.SQLiteGenerator
+
+    def on_connected(self):
+        try:
+            self.execute("SELECT 1")
+            return True
+        except:
+            return False
 
     def execute(self, sql:str, value=None):
         return self._conn.execute(sql, value or [])

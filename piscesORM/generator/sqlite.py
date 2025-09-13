@@ -1,101 +1,13 @@
 from __future__ import annotations
 from typing import Type, Any, overload
-from .table import Table
-from .column import Column
+from ..table import Table
+from ..column import Column
 import logging
 from abc import ABC, abstractmethod
-from . import errors
-from . import operator
+from .. import errors
+from ..import operator
 import warnings
-
-
-class BasicGenerator(ABC):
-    @staticmethod
-    @abstractmethod
-    def generate_create_table(table: Type[Table], exist_ok: bool = False) -> str:
-        """
-        generate SQL to create table.
-        - table: the table class you want to create.
-        - exist_ok: allow the table is exist. Default is False.
-        """
-        ...
-    
-
-    @staticmethod
-    @abstractmethod
-    def generate_starcture(table: Type[Table]) -> str:
-        """
-        Generate SQL that can check table starcture in database.
-        - table: the table class you want to check.
-        """
-        ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_insert_column(table: Type[Table], org_starcture:dict) -> list[str]: 
-        """
-        
-        """
-        ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_insert(obj: Table) -> tuple[str, tuple[Any]]: 
-        """
-        
-        """
-        ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_update(obj: Table, merge:bool = True) -> tuple[str, tuple[Any]]: 
-        """
-        
-        """
-        ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_delete(obj_or_table: Table|Type[Table], **filters) -> tuple[str, tuple[Any]]:
-        """
-        Delete records from the database.
-
-        Args:
-            obj_or_table (Table | Type[Table]): 
-                - Table instance: Delete the record represented by the instance.
-                - Table class: Delete records based on the provided filters.
-            **filters: The rules for deletion.
-
-        Returns:
-            tuple[str, tuple[Any]]: SQL statement and values to execute.
-        """
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def generate_index(table: Type[Table]) -> list[str]: 
-        """
-        
-        """
-        ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_drop(table: Type[Table]) -> str: ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_get_pk(table: Type[Table], **filters) -> tuple[str, tuple[Any]]: ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_select(table: Type[Table], **filters) -> tuple[str, list]: ...
-
-    @staticmethod
-    @abstractmethod
-    def generate_count(table: Type[Table], **filters) -> tuple[str, list]: ...
-    
-
+from . import BasicGenerator
 
 class SQLiteGenerator(BasicGenerator):
     @staticmethod
@@ -107,14 +19,14 @@ class SQLiteGenerator(BasicGenerator):
         for name, column in table._columns.items():
             parts = [name, column.type]
 
-            # 這是 SQLite 的唯一合法形式：INTEGER PRIMARY KEY AUTOINCREMENT
-            if column.primary_key and column.auto_increment and column.type == "INTEGER":
+            # INTEGER PRIMARY KEY AUTOINCREMENT
+            if column.primary_key and column.auto_increment and column.type.upper() == "INTEGER":
                 parts.append("PRIMARY KEY AUTOINCREMENT")
                 # 不要再於後面補 PRIMARY KEY
             else:
                 if column.not_null:
                     parts.append("NOT NULL")
-                if column.unique:
+                if column.unique and not column.primary_key:
                     parts.append("UNIQUE")      
                 if column.default is not None:
                     parts.append(f"DEFAULT {repr(column.to_db(column.default))}")
@@ -129,13 +41,14 @@ class SQLiteGenerator(BasicGenerator):
         if len(pk_fields) == 1:
             pk_name = pk_fields[0]
             col = table._columns[pk_name]
-            if not (col.primary_key and col.auto_increment and col.type == "INTEGER"):
+            if not (col.primary_key and col.auto_increment and col.type.upper() == "INTEGER"):
                 # 找到該欄位加 PRIMARY KEY
                 for i, name in enumerate(table._columns):
                     if name == pk_name:
                         column_defs[i] += " PRIMARY KEY"
         elif len(pk_fields) > 1:
-            column_defs.append(f"PRIMARY KEY ({', '.join(pk_fields)})")
+            quoted = ", ".join(quote_ident(f) for f in pk_fields)
+            column_defs.append(f"PRIMARY KEY ({quoted})")
         elif not table.__no_primary_key__:
             warnings.warn(errors.NoPrimaryKeyWarning())
 
@@ -143,7 +56,7 @@ class SQLiteGenerator(BasicGenerator):
         return f"CREATE TABLE {'IF NOT EXISTS' if exist_ok else ''} {table_name} ({columns_sql});"
     
     @staticmethod
-    def generate_starcture(table):
+    def generate_structure(table):
         table_name = table.__table_name__ or table.__name__
         return f"PRAGMA table_info({table_name})"
     
@@ -161,10 +74,16 @@ class SQLiteGenerator(BasicGenerator):
                 col_type = column.type
                 constraints = []
                 if column.not_null:
+                    if column.default is None:
+                        raise errors.NotNullColumnWithoutDefault(col_name)
                     constraints.append("NOT NULL")
 
                 constraint_sql = " ".join(constraints)
-                full_col_sql = f"{col_name} {col_type} {constraint_sql}".strip()
+                default_sql = ""
+                if column.default is not None:
+                    default_sql = f"DEFAULT {format_default(column.to_db(column.default))}"
+
+                full_col_sql = f"{quote_ident(col_name)} {col_type} {constraint_sql} {default_sql}".strip()
                 sql = f"ALTER TABLE {table_name} ADD COLUMN {full_col_sql};"
                 sqls.append(sql)
             return sqls
@@ -189,8 +108,7 @@ class SQLiteGenerator(BasicGenerator):
         return sql, tuple(values)
     
     @staticmethod
-    def generate_update(obj, merge = True):
-        """merge: only edit change column"""
+    def generate_update_object(obj, merge = True):
         table_name = obj.__table_name__ or obj.__class__.__name__
         set_parts = []
         set_values = []
@@ -210,12 +128,31 @@ class SQLiteGenerator(BasicGenerator):
                     set_parts.append(f"{name} = ?")
                     set_values.append(column.to_db(value))
 
+        if not set_parts:
+            return None , tuple()
+
         sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE {' AND '.join(where_parts)}"
         return sql, tuple(set_values + where_values)
     
     @staticmethod
-    def generate_delete(obj_or_table: Table|Type[Table], **filters):
-        table_name = obj_or_table.__table_name__ or obj_or_table.__class__.__name__
+    def generate_update(table, filters, **target):
+        table_name = table.__table_name__ or table.__name__
+        set_parts = []
+        set_values = []
+        where_sql, where_values = parse_LogicalOperator(table, filters)
+
+        key_list = table._columns.keys()
+        for col_name, value in target.items():
+            if col_name not in key_list:
+                raise errors.NoSuchColumn(col_name)
+            
+
+        sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE {where_sql}"
+        return sql, tuple()
+    
+    @staticmethod
+    def generate_delete(obj_or_table: Table|Type[Table], filters=None, delete_all_protect=True):
+        table_name = obj_or_table.__table_name__ or obj_or_table.__name__
 
         # delete by object
         if isinstance(obj_or_table, Table):
@@ -236,13 +173,14 @@ class SQLiteGenerator(BasicGenerator):
             return sql, tuple(where_values)
         else: # delete by filters
             if not filters:
-                sql = f"DELETE FROM {table_name}"
-                return sql, ()
+                if not delete_all_protect:
+                    sql = f"DELETE FROM {table_name}"
+                    return sql, ()
+                raise errors.UnsafeDeleteError()
             else:
-                where_clause, values = parse_filter(obj_or_table, filters)
+                where_clause, values = parse_LogicalOperator(obj_or_table, filters)
                 sql = f"DELETE FROM {table_name} WHERE {where_clause}"
                 return sql, tuple(values)
-
     
     @staticmethod
     def generate_index(table):
@@ -250,7 +188,9 @@ class SQLiteGenerator(BasicGenerator):
         sqls = []
         for col_name in table._indexes:
             index_name = f"{table_name}_{col_name}_idx"
-            sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({col_name})"
+            col = table._columns[col_name]
+            unique_sql = "UNIQUE " if col.unique else ""
+            sql = f"CREATE {unique_sql}INDEX IF NOT EXISTS {quote_ident(index_name)} ON {table_name} ({quote_ident(col_name)})"
             sqls.append(sql)
         return sqls
     
@@ -260,52 +200,54 @@ class SQLiteGenerator(BasicGenerator):
         return f"DROP table {table_name}"
     
     @staticmethod
-    def generate_get_pk(table, **filters):
-        table_name = table.__table_name__ or table.__name__
-        pk_fields = [ name for name, col in table._columns.items() if col.primary_key]
-        pk_sql = ", ".join(pk_fields)
-        if not pk_fields:
-            return f"SELECT {pk_sql} from {table_name}", tuple()
-        where_clause, values = parse_filter(table, filters)
-        return f"SELECT {pk_sql} from {table_name} WHERE {where_clause}", tuple(values)
-    
-    @staticmethod
-    def generate_select(table: Type[Table], **filters) -> tuple[str, list]:
+    def generate_select(table: Type[Table], filters=None) -> tuple[str, list]:
         table_name = table.__table_name__ or table.__name__
         sql = f"SELECT * FROM {table_name}"
         if filters:
-            where_clause, values = parse_filter(table, filters)
+            where_clause, values = parse_LogicalOperator(table, filters)
             sql += " WHERE " + where_clause
         else:
             values = []
         return sql, values
     
     @staticmethod
-    def generate_count(table: Type[Table], **filters) -> tuple[str, list]:
+    def generate_count(table: Type[Table], filters=None) -> tuple[str, list]:
         table_name = table.__table_name__ or table.__name__
         sql = f"SELECT COUNT(*) FROM {table_name}"
         values = []
         if filters:
-            conditions = []
-            for key, value in filters.items():
-                if key not in table._columns:
-                    raise ValueError(f"Unknown column name: {key}")
-                conditions.append(f"{key} = ?")
-                values.append()
-            sql += " WHERE " + " AND ".join(conditions)
-    
-def parse_filter(table:Table, filters: dict) -> tuple[str, list]:
-    conditions = []
-    values = []
-    for key, value in filters.items():
-        if key not in table._columns:
-            raise ValueError(f"Unknown column name: {key}")
-        col = table._columns[key]
-        if isinstance(value, operator.Operator):
-            op = operator.OP_MAPPING.get(type(value), "=")
-            conditions.append(f"{key} {op} ?")
-            values.append(col.to_db(value.value))
-        else:
-            conditions.append(f"{key} = ?")
-            values.append(col.to_db(value))
-    return " AND ".join(conditions), values
+            where_clause, values = parse_LogicalOperator(table, filters)
+            sql += " WHERE " + where_clause
+        return sql, values
+
+def parse_LogicalOperator(table: Type[Table], op: operator.LogicalOperator) -> tuple[str, list]:
+    from ..operator import SQLITE_TRANSLATE_MAP
+    if isinstance(op, (operator.AND, operator.OR)):
+        left_sql, left_vals = parse_LogicalOperator(table, op.first_part)
+        right_sql, right_vals = parse_LogicalOperator(table, op.second_part)
+        sql = f"({left_sql}) {SQLITE_TRANSLATE_MAP[type(op)]} ({right_sql})"
+        return sql, left_vals + right_vals
+    elif isinstance(op, operator.In_):
+        col = table._columns[op.first_part]
+        placeholders = ','.join(['?'] * len(op.second_part))
+        sql = f"{op.first_part} IN ({placeholders})"
+        vals = [col.to_db(v) for v in op.second_part]
+        return sql, vals
+    else:
+        col = table._columns[op.first_part]
+        sql = f"{op.first_part} {SQLITE_TRANSLATE_MAP[type(op)]} ? "
+        val = col.to_db(op.second_part)
+        return sql, [val]
+
+def quote_ident(name: str) -> str:
+    """Quote identifier to avoid conflicts with SQLite keywords"""
+    return f'"{name}"'   
+
+def format_default(val: any) -> str:
+    """Format DEFAULT value safely for SQLite"""
+    if val is None:
+        return "NULL"
+    if isinstance(val, (int, float)):
+        return str(val)
+    s = str(val).replace("'", "''")  # escape single quotes
+    return f"'{s}'"

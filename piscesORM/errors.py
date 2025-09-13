@@ -26,9 +26,19 @@ class InsertPrimaryKeyColumn(PiscesError):
         )
         super().__init__(message)
 
+class NotNullColumnWithoutDefault(PiscesError):
+    def __init__(self, col_name):
+        message = f"Cannot add NOT NULL column {col_name} without DEFAULT in SQLite"
+        super().__init__(message)
+
 class TableNotFound(PiscesError):
     def __init__(self, table_name):
         message = f"Table '{table_name}' not found in registry."
+        super().__init__(message)
+
+class UnsafeDeleteError(PiscesError):
+    def __init__(self):
+        message = "Refuse to delete all rows without filters"
         super().__init__(message)
         
 PROTECT_NAME = set([
@@ -57,6 +67,7 @@ class NoSuchColumn(PiscesError):
     def __init__(self, column_name: str):
         message = f"No such column: '{column_name}'"
         super().__init__(message)
+
 
 # Lock errors
 class LockError(PiscesError):
@@ -88,3 +99,4 @@ class MissingLock(LockError):
         message = f"you missing the current key: \n"
         message += "\n".join(missing_keys)
         return super().__init__(message)
+    

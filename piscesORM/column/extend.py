@@ -1,71 +1,13 @@
 from __future__ import annotations
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict
 import json
 import logging
-from enum import Enum
-from . import errors
-from .base import TABLE_REGISTRY
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from enum import Enum, IntEnum, IntFlag, StrEnum
+from .. import errors
+from . import Column
 logger = logger = logging.getLogger("piscesORM")
 
-if TYPE_CHECKING:
-    from .table import Table
-
-class Column:
-    type:str = ""
-    primary_key = False
-    not_null = False
-    auto_increment = False
-    unique = False
-    default:Any = None
-    index:bool = False
-    
-    def __init__(self, type:str|dict[str, str], primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool = False):
-        self.type = type
-        self.primary_key = primary_key
-        self.not_null = not_null
-        self.auto_increment = auto_increment
-        self.unique = unique
-        self.default = self.normalize_default(default)
-        self.index = index
-
-        self._type = type if isinstance(type, dict) else {"sqlite": type, "mysql": type}
-
-    def get_type(self, dialect: str) -> str:
-        return self._type.get(dialect, self._type["sqlite"])
-        
-
-    def to_db(self, value: Any) -> Any:
-        return value
-
-    def from_db(self, value: Any) -> Any:
-        return value
-    
-    def normalize_default(self, default: Any) -> Any:
-        return default
-
-class Integer(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
-        super().__init__("INTEGER", primary_key, not_null, auto_increment, unique, default, index)
-    
-class Text(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
-        super().__init__("TEXT", primary_key, not_null, auto_increment, unique, default, index)
-
-class Blob(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
-        super().__init__("BLOB", primary_key, not_null, auto_increment, unique, default, index)
-
-class Real(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
-        super().__init__("REAL", primary_key, not_null, auto_increment, unique, default, index)
-
-class Numeric(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
-        super().__init__("NUMERIC", primary_key, not_null, auto_increment, unique, default, index)
-
-class Boolean(Column):
+class Boolean(Column[bool]):
     def __init__(self, primary_key = False, not_null = False, auto_increment = False, unique = False, default = None, index = False):
         super().__init__("INTEGER", primary_key, not_null, auto_increment, unique, default, index)
 
@@ -75,7 +17,7 @@ class Boolean(Column):
     def from_db(self, value):
         return bool(value)
 
-class Json(Column):
+class Json(Column[dict]):
     def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("TEXT", primary_key, not_null, auto_increment, unique, default, index)
 
@@ -98,27 +40,37 @@ class Json(Column):
             return {}
         return default
 
-class StringArray(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
+class Array(Column[list[Any]]):
+    """
+    It's a array that support by python json. those type whose support by json.dump() can be support by this.
+    - enum: 
+        - this is a special function that can auto store into enum.
+        - If you use this, you need to make shure all value are in the enum. 
+        - no mix enums support.
+    """
+    def __init__(self, enum:IntEnum|StrEnum|IntFlag=None, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("TEXT", primary_key, not_null, auto_increment, unique, default, index)
+        self.enum = enum
 
-    def to_db(self, value:list[str]):
-        return ",".join(value) if value else ""
+    def to_db(self, value:list[Any]):
+        if value is None:
+            return None
+        result = json.dumps(value)
+        if self.enum is not None:
+            return [self.enum(v) for v in result]
+        return result
 
     def from_db(self, value:str):
-        return value.split(",") if value else []
+        if not value:
+            return []
+        return json.loads(value)
 
-class IntegerArray(Column):
-    def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
-        super().__init__("TEXT", primary_key, not_null, auto_increment, unique, default, index)
-
-    def to_db(self, value:list[int]):
-        return ",".join(map(str, value)) if value else ""
-
-    def from_db(self, value:str):
-        return list(map(int, value.split(","))) if value else []
     
-class EnumType(Column):
+class EnumType(Column[Enum]):
+    """
+    
+    
+    """
     def __init__(self, enum:Enum, store_as_value:bool=False, org_type:Any=None, 
                  primary_key = False, not_null = False, auto_increment = False, 
                  unique = False, default = None, index = False):
@@ -152,7 +104,11 @@ class EnumType(Column):
         except Exception as e:
             logger.error(f"EnumArray from_db error: {e}")
     
-class EnumArray(Column):
+class EnumArray(Column[list[Enum]]):
+    """
+    If the enum value only is `int` or `str`, the basic `Array` is a better choise.\n
+    EnumArray not support mixing enum, also is for Array.
+    """
     def __init__(self, enum:Enum, store_as_value:bool = False, org_type:Any = None, 
                  primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, 
                  unique:bool=False, default:Any=None, index:bool=None):
@@ -168,12 +124,12 @@ class EnumArray(Column):
         
     def to_db(self, value):
         if value is None:
-            return ""
+            return None
         try:
             if self.store_as_value:
-                return ",".join(str(v.value) for v in value)
+                return json.dumps([v.value for v in value])
             else:
-                return ",".join(v.name for v in value)
+                return json.dumps([v.name for v in value])
         except KeyError as e:
             logger.error(f"EnumArray from_db error: {e}")
     
@@ -181,7 +137,7 @@ class EnumArray(Column):
         if not value:
             return []
         try:
-            items = value.split(",")
+            items = json.loads(value)
             if self.store_as_value:
                 return [self.enum(self.org_type(v)) for v in items]
             else:
@@ -197,22 +153,3 @@ class EnumArray(Column):
                 default = ",".join(str(v.value) for v in default)
             else:
                 default = ",".join(v.name for v in default)
-
-
-class Relationship:
-    def __init__(self, table:Union[type["Table"], str], plural_data=False, **filter):
-        self.table = table
-        self.plural_data = plural_data
-        self.filter = filter
-
-    def get_table(self):
-        if isinstance(self.table, str):
-            t = TABLE_REGISTRY.get(self.table, None)
-            if not t:
-                raise errors.TableNotFound(self.table)
-            return t
-        return self.table
-
-class FieldRef:
-    def __init__(self, name:str):
-        self.name = name

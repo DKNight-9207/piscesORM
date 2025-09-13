@@ -2,7 +2,7 @@
 
 ## 📚 Module Overview
 - [column](#piscesormcolumn)
-- [operator](#piscesormoperator)
+- [LogicalOperator](#piscesormLogicalOperator)
 - [table](#piscesormtable)
 - [engine]()
 - [session]()
@@ -96,51 +96,51 @@ Special type, same as above, but returns `list[Enum]`
 
 ---
 
-## piscesORM.operator
+## piscesORM.LogicalOperator
 
 When searching, you can use column=value for basic `equal` check, or use these markers for advanced conditions.
 
 <details>
-<summary><strong>class Operator</strong></summary>
+<summary><strong>class LogicalOperator</strong></summary>
 
-Basic operator, no special meaning.
+Basic LogicalOperator, no special meaning.
 </details>
 
 <details>
 <summary><strong>class GreaterThan</strong></summary>
 
-`Greater than` operator, SQL `>`. Alias: `Gt`
+`Greater than` LogicalOperator, SQL `>`. Alias: `Gt`
 </details>
 
 <details>
 <summary><strong>class GreaterEqual</strong></summary>
 
-`Greater or equal` operator, SQL `>=`. Alias: `Gte`
+`Greater or equal` LogicalOperator, SQL `>=`. Alias: `Gte`
 </details>
 
 <details>
 <summary><strong>class LessThan</strong></summary>
 
-`Less than` operator, SQL `<`. Alias: `Lt`
+`Less than` LogicalOperator, SQL `<`. Alias: `Lt`
 </details>
 
 <details>
 <summary><strong>class LessEqual</strong></summary>
 
-`Less or equal` operator, SQL `<=`. Alias: `Lte`
+`Less or equal` LogicalOperator, SQL `<=`. Alias: `Lte`
 </details>
 
 <details>
 <summary><strong>class Equal</strong></summary>
 
-`Equal` operator, SQL `=`. Alias: `Eq`
+`Equal` LogicalOperator, SQL `=`. Alias: `Eq`
 ~~You probably don't need this one~~
 </details>
 
 <details>
 <summary><strong>class NotEqual</strong></summary>
 
-`Not equal` operator, SQL `!=`. Alias: `Ne`
+`Not equal` LogicalOperator, SQL `!=`. Alias: `Ne`
 </details>
 
 ---
