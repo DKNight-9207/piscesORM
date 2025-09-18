@@ -24,5 +24,5 @@ with engine.session() as session:
     session.commit()
 
 with engine.session() as session:
-    books_1:list[Books] = session.get_all(Books, price = Gte(10))
+    books_1:list[Books] = session.get_all(Books, Books.price >= 10)
     print([b.name for b in books_1])

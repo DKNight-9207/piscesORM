@@ -8,6 +8,7 @@ from .. import errors
 from ..import operator
 import warnings
 from . import BasicGenerator
+from ..operator.translate import translate_sqlite_security
 
 class SQLiteGenerator(BasicGenerator):
     @staticmethod
@@ -139,7 +140,7 @@ class SQLiteGenerator(BasicGenerator):
         table_name = table.__table_name__ or table.__name__
         set_parts = []
         set_values = []
-        where_sql, where_values = parse_LogicalOperator(table, filters)
+        where_sql, where_values = translate_sqlite_security(filters)
 
         key_list = table._columns.keys()
         for col_name, value in target.items():
@@ -178,7 +179,7 @@ class SQLiteGenerator(BasicGenerator):
                     return sql, ()
                 raise errors.UnsafeDeleteError()
             else:
-                where_clause, values = parse_LogicalOperator(obj_or_table, filters)
+                where_clause, values = translate_sqlite_security(filters)
                 sql = f"DELETE FROM {table_name} WHERE {where_clause}"
                 return sql, tuple(values)
     
@@ -204,7 +205,7 @@ class SQLiteGenerator(BasicGenerator):
         table_name = table.__table_name__ or table.__name__
         sql = f"SELECT * FROM {table_name}"
         if filters:
-            where_clause, values = parse_LogicalOperator(table, filters)
+            where_clause, values = translate_sqlite_security(filters)
             sql += " WHERE " + where_clause
         else:
             values = []
@@ -216,28 +217,9 @@ class SQLiteGenerator(BasicGenerator):
         sql = f"SELECT COUNT(*) FROM {table_name}"
         values = []
         if filters:
-            where_clause, values = parse_LogicalOperator(table, filters)
+            where_clause, values = translate_sqlite_security(filters)
             sql += " WHERE " + where_clause
         return sql, values
-
-def parse_LogicalOperator(table: Type[Table], op: operator.LogicalOperator) -> tuple[str, list]:
-    from ..operator import SQLITE_TRANSLATE_MAP
-    if isinstance(op, (operator.AND, operator.OR)):
-        left_sql, left_vals = parse_LogicalOperator(table, op.first_part)
-        right_sql, right_vals = parse_LogicalOperator(table, op.second_part)
-        sql = f"({left_sql}) {SQLITE_TRANSLATE_MAP[type(op)]} ({right_sql})"
-        return sql, left_vals + right_vals
-    elif isinstance(op, operator.In_):
-        col = table._columns[op.first_part]
-        placeholders = ','.join(['?'] * len(op.second_part))
-        sql = f"{op.first_part} IN ({placeholders})"
-        vals = [col.to_db(v) for v in op.second_part]
-        return sql, vals
-    else:
-        col = table._columns[op.first_part]
-        sql = f"{op.first_part} {SQLITE_TRANSLATE_MAP[type(op)]} ? "
-        val = col.to_db(op.second_part)
-        return sql, [val]
 
 def quote_ident(name: str) -> str:
     """Quote identifier to avoid conflicts with SQLite keywords"""

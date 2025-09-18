@@ -64,16 +64,16 @@ class AsyncSQLiteSession(AsyncBaseSession):
         except sqlite3.IntegrityError:
             raise errors.PrimaryKeyConflict()
 
-    async def filter(self, table: Type[Table], **kwargs) -> List[Table]:
-        sql, values = self._generator.generate_select(table, **kwargs)
+    async def _filter(self, table: Type[Table], filter=None) -> List[Table]:
+        sql, values = self._generator.generate_select(table, filter)
 
         async with self._conn.execute(sql, values) as cursor:
             rows = await cursor.fetchall()
             objs = [table.from_row(dict(row)) for row in rows]
             return objs
 
-    async def get_first(self, table: Type[Table], load_relationships = True, **kwargs) -> Table | None:
-        result = await self.filter(table, **kwargs)
+    async def get_first(self, table, filters=None, load_relationships=True, read_only=False) -> Table | None:
+        result = await self._filter(table, filters)
         if result is not None:
             result = result[0]
             if load_relationships:
@@ -81,8 +81,8 @@ class AsyncSQLiteSession(AsyncBaseSession):
             result._initialized = True
         return result if result else None
 
-    async def get_all(self, table: Type[Table], load_relationships = True, **kwargs) -> List[Table]:
-        result = await self.filter(table, **kwargs)
+    async def get_all(self, table, filters=None, load_relationships=True, read_only=False) -> List[Table]:
+        result = await self._filter(table, filters)
         for obj in result:
             if load_relationships:
                 await self._load_relationship(obj)
@@ -108,8 +108,8 @@ class AsyncSQLiteSession(AsyncBaseSession):
         if self._auto_commit:
             await self._conn.commit()
 
-    async def count(self, table: Table, **kwargs) -> int:
-        sql, values = self._generator.generate_count(table, **kwargs)
+    async def count(self, table: Table, filters=None) -> int:
+        sql, values = self._generator.generate_count(table, filters)
 
         async with self._conn.execute(sql, values) as cursor:
             row = await cursor.fetchone()
@@ -124,8 +124,8 @@ class AsyncSQLiteSession(AsyncBaseSession):
     async def update_table_structure(self, table: Type[Table], rebuild=False):
         """
         Update table structure to sync with definition.
-        - If rebuild=False: Only add missing columns using ALTER TABLE.
-        - If rebuild=True: Rebuild entire table (DROP and recreate).
+        - If rebuild = `False`: Only add missing columns using ALTER TABLE.
+        - If rebuild = `True`: Rebuild entire table (DROP and recreate).
         """
         table_name = table.__table_name__ or table.__name__
 
@@ -243,6 +243,7 @@ class AsyncSQLiteSession(AsyncBaseSession):
 
 class AsyncSQLiteLockSession(AsyncSQLiteSession):
     def __init__(self, connection, mode="r", auto_commit = True):
+        raise RuntimeError("this session not ready yet.")
         super().__init__(connection, mode, auto_commit)
         self.mode = mode
 
@@ -279,7 +280,7 @@ class SyncSQLiteSession(SyncBaseSession):
     def insert(self, obj: Table):
         sql, values = self._generator.generate_insert(obj)
         try:
-            cursor = self._conn.execute(sql, values)
+            self._conn.execute(sql, values)
 
             if self._auto_commit:
                 self._conn.commit()
@@ -301,17 +302,16 @@ class SyncSQLiteSession(SyncBaseSession):
         except sqlite3.IntegrityError:
             raise errors.PrimaryKeyConflict()
     
-    def filter(self, table: Type[Table], **kwargs) -> List[Table]:
-        table_name = table.__table_name__ or table.__name__
-        sql, values = self._generator.generate_select(table, **kwargs)
+    def _filter(self, table: Type[Table], filters=None) -> List[Table]:
+        sql, values = self._generator.generate_select(table, filters)
 
         cursor = self._conn.execute(sql, values)
         rows = cursor.fetchall()
         objs = [table.from_row(dict(row)) for row in rows]
         return objs
 
-    def get_first(self, table: Type[Table], load_relationships = True, **kwargs) -> Table | None:
-        result = self.filter(table, **kwargs)
+    def get_first(self, table: Type[Table], filters = None, load_relationships = True, read_only=False) -> Table | None:
+        result = self._filter(table, filters)
         if result is not None:
             result = result[0]
             if load_relationships:
@@ -319,8 +319,8 @@ class SyncSQLiteSession(SyncBaseSession):
             result._initialized = True
         return result if result else None
 
-    def get_all(self, table: Type[Table], load_relationships = True, **kwargs) -> List[Table]:
-        result = self.filter(table, **kwargs)
+    def get_all(self, table: Type[Table], filters = None, load_relationships = True, read_only=False) -> List[Table]:
+        result = self._filter(table, filters)
         for obj in result:
             if load_relationships:
                 self._load_relationship(obj)
@@ -375,18 +375,8 @@ class SyncSQLiteSession(SyncBaseSession):
         if self._auto_commit:
             self._conn.commit()
 
-    def count(self, table: Table, **kwargs) -> int:
-        table_name = table.__table_name__ or table.__name__
-        sql = f"SELECT COUNT(*) FROM {table_name}"
-        values = []
-        if kwargs:
-            conditions = []
-            for key, value in kwargs.items():
-                if key not in table._columns:
-                    raise ValueError(f"Unknown column name: {key}")
-                conditions.append(f"{key} = ?")
-                values.append()
-            sql += " WHERE " + " AND ".join(conditions)
+    def count(self, table: Table, filters = None) -> int:
+        sql, values = self._generator.generate_count(table, filters)
 
         cursor = self._conn.execute(sql, values)
         row = cursor.fetchone()

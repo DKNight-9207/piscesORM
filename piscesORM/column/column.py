@@ -41,17 +41,12 @@ class Column(Generic[T]):
         self._name = None
 
         self._name: str|None = None  # 欄位名稱
-        if T != TypeVar('_T'):
-            self._python_type = T
-        else:
-            self._python_type = Any
 
     def __set_name__(self, owner, name: str):
         self._name = name
 
     def __set__(self, instance, value):
         if value is not None:
-            self._check_type(value)
             value = self.to_db(value)
         instance.__dict__[self._name] = value
         instance._edited.add(self._name)
@@ -59,12 +54,6 @@ class Column(Generic[T]):
     def get_type(self, dialect: str) -> str:
         return self._type.get(dialect, self._type["sqlite"])
     
-    def _check_type(self, value):
-        if self._python_type is Any:
-            return
-        
-        if not isinstance(value, self._python_type):
-            raise TypeError(f"Value '{value}' must be of type {self._python_type}, not {type(value)}")
         
     def to_db(self, value: Any) -> Any:
         return value
@@ -78,31 +67,31 @@ class Column(Generic[T]):
 
     # 條件運算子
     def equal(self, value):
-        return operator.Equal(self._name, value)
+        return operator.Equal(self, value)
     
     def not_equal(self, value):
-        return operator.NotEqual(self._name, value)
+        return operator.NotEqual(self, value)
 
     def greater_than(self, value):
-        return operator.GreaterThan(self._name, value)
+        return operator.GreaterThan(self, value)
 
     def greater_equal(self, value):
-        return operator.GreaterEqual(self._name, value)
+        return operator.GreaterEqual(self, value)
     
     def less_than(self, value):
-        return operator.LessThan(self._name, value)
+        return operator.LessThan(self, value)
     
     def less_equal(self, value):
-        return operator.LessEqual(self._name, value)
+        return operator.LessEqual(self, value)
     
     def in_(self, value):
-        return operator.In_(self._name, value)
+        return operator.IsIn(self, value)
     
     def like(self, value):
-        return operator.Like(self._name, value)
+        return operator.Like(self, value)
     
     def ilike(self, value):
-        return operator.ILike(self._name, value)
+        return operator.ILike(self, value)
     
 
     # 快速調用 (特殊方法)
@@ -126,3 +115,27 @@ class Column(Generic[T]):
         
     def __contains__(self, value):
         return self.in_(value)
+    
+    def __or__(self, value):
+        return operator.OR(self, value)
+
+    def __and__(self, value):
+        return operator.AND(self, value)
+    
+    def __add__(self, value):
+        return operator.Plus(self, value)
+    
+    def __sub__(self, value):
+        return operator.Minus(self, value)
+    
+    def __mul__(self, value):
+        return operator.Multiply(self, value)
+    
+    def __truediv__(self, value):
+        return operator.Divide(self, value)
+    
+    def __mod__(self, value):
+        return operator.Modulo(self, value)
+    
+    def __pow__(self, value):
+        return operator.Power(self, value)

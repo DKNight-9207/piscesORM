@@ -11,7 +11,6 @@ logger = logger = logging.getLogger("piscesORM")
 
 
 class TableMeta(type):
-
     def __new__(cls, name, bases, attrs):
         columns: Dict[str, Column] = {}
         relationship: Dict[str, Relationship] = {}
@@ -44,6 +43,7 @@ class Table(metaclass=TableMeta):
     __abstract__ = True
     __table_name__ = None
     __no_primary_key__ = False
+    __read_only__ = False
 
     _columns:dict[str, Column]     # var_name: column
     _relationship:dict[str, Relationship]
@@ -60,6 +60,9 @@ class Table(metaclass=TableMeta):
 
     def __setattr__(self, name, value):
         if hasattr(self, "_initialized") and self._initialized:
+            if self.__read_only__:
+                raise errors.ModifyReadOnlyObject()
+
             if hasattr(self, "_columns") and name in self._columns:
                 self._edited.add(name)
         super().__setattr__(name, value)
@@ -93,13 +96,16 @@ class Table(metaclass=TableMeta):
         return super().__str__()
     
     def _get_pks(self):
-        pk = [ v for v in self._columns.values() if v.primary_key]
-        if not pk:
-            pk = []
-        return (self.__table_name__ or self.__class__.__name__, tuple(pk))
+        pks_names = [name for name, col in self._columns.items() if col.primary_key]
+        if not pks_names:
+            return (self.__table_name__ or self.__class__.__name__, None)
+
+        pks_values = tuple(getattr(self, name) for name in pks_names)
+        return (self.__table_name__ or self.__class__.__name__, pks_values)
     
     def __hash__(self):
-        return hash(self._get_pks())
+        pks = self._get_pks()
+        return hash(pks)
     
     def __eq__(self, value):
         if isinstance(value, self.__class__):
@@ -128,7 +134,8 @@ class Table(metaclass=TableMeta):
                     raise errors.NoSuchColumn(rel.name)
         obj._relationship = _rel
                 
-
+        # not set _initilized = Ture is because relationship not set ready yet.
+        # session will do it.
         return obj
 
     @classmethod

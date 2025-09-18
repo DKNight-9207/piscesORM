@@ -40,6 +40,11 @@ class UnsafeDeleteError(PiscesError):
     def __init__(self):
         message = "Refuse to delete all rows without filters"
         super().__init__(message)
+
+class ModifyReadOnlyObject(PiscesError):
+    def __init__(self):
+        message = "You are trying to modify a read-only object"
+        super().__init__(message)
         
 PROTECT_NAME = set([
     # table protected val
