@@ -2,7 +2,6 @@ from __future__ import annotations
 from piscesORM.table import Table
 from piscesORM.column import Text, Integer, Relationship, FieldRef, Real
 from piscesORM.engine import SyncSQLiteEngine
-from piscesORM.operator import Gte, Lte
 
 
 class Books(Table):

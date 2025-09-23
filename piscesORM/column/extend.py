@@ -4,7 +4,10 @@ import json
 import logging
 from enum import Enum, IntEnum, IntFlag, StrEnum
 from .. import errors
+from ..ptime import PiscesTime
 from . import Column
+import traceback
+from datetime import datetime
 logger = logger = logging.getLogger("piscesORM")
 
 class Boolean(Column[bool]):
@@ -153,3 +156,60 @@ class EnumArray(Column[list[Enum]]):
                 default = ",".join(str(v.value) for v in default)
             else:
                 default = ",".join(v.name for v in default)
+
+class Time(Column[PiscesTime]):
+    def __init__(self, primary_key=False, not_null=False, auto_increment=False, unique=False, default=None, index=False):
+        super().__init__("DATETIME", primary_key, not_null, auto_increment, unique, default, index)
+
+    def to_db(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+                return PiscesTime.fromtimestamp(value).to_database()
+        if isinstance(value, PiscesTime):
+            return value.to_database()
+        if isinstance(value, datetime):
+            return PiscesTime.from_datetime(value).to_database()
+        raise ValueError("the value of time only support int/float/datetime/PiscesTime")
+    
+    def from_db(self, value:str|None):
+        if not value:
+            return PiscesTime.fromtimestamp(0)
+        return PiscesTime.from_database(value)
+    
+    def normalize_default(self, default:int|float|datetime|PiscesTime|None):
+        if default is not None:
+            if isinstance(default, (int, float)):
+                return PiscesTime.fromtimestamp(default)
+            if isinstance(default, datetime):
+                return PiscesTime.from_datetime(default)
+            return default
+        
+    @staticmethod
+    def _format_time(value):
+        if isinstance(value, (int, float)):
+            return PiscesTime.fromtimestamp(value).to_database()
+        elif isinstance(value, PiscesTime):
+            return value.to_database()
+        elif isinstance(value, datetime):
+            return PiscesTime.from_datetime(value).to_database()
+        raise ValueError("only support int/float/datetime/PiscesTime")
+
+        
+    def __eq__(self, value):
+        return super().__eq__(self._format_time(value))
+    
+    def __ne__(self, value):
+        return super().__ne__(self._format_time(value))
+    
+    def __ge__(self, value):
+        return super().__ge__(self._format_time(value))
+    
+    def __gt__(self, value):
+        return super().__gt__(self._format_time(value))
+    
+    def __le__(self, value):
+        return super().__le__(self._format_time(value))
+    
+    def __lt__(self, value):
+        return super().__lt__(self._format_time(value))

@@ -12,6 +12,9 @@ __pycache__/
 /PiscesORM.egg-info/
 /dist/
 
+# vsc config
+/.vscode/
+
 # not a bot data
 update.bat
 translation_report.txt

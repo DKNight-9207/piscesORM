@@ -44,15 +44,6 @@ class Column(Generic[T]):
 
     def __set_name__(self, owner, name: str):
         self._name = name
-
-    def __set__(self, instance, value):
-        if value is not None:
-            value = self.to_db(value)
-        instance.__dict__[self._name] = value
-        instance._edited.add(self._name)
-
-    def get_type(self, dialect: str) -> str:
-        return self._type.get(dialect, self._type["sqlite"])
     
         
     def to_db(self, value: Any) -> Any:

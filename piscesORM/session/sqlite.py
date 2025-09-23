@@ -312,7 +312,7 @@ class SyncSQLiteSession(SyncBaseSession):
 
     def get_first(self, table: Type[Table], filters = None, load_relationships = True, read_only=False) -> Table | None:
         result = self._filter(table, filters)
-        if result is not None:
+        if result:
             result = result[0]
             if load_relationships:
                 self._load_relationship(result)
