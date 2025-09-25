@@ -8,6 +8,16 @@ class PiscesError(Exception):
 class PiscesWarning(Warning):
     pass
 
+class sqlite3Error(PiscesError):
+    def __init__(self):
+        message = "this error happened at sqlite3."
+        super().__init__(message)
+
+class aiosqliteError(PiscesError):
+    def __init__(self):
+        message = "this error happened at aiosqlite."
+        super().__init__(message)
+
 class NoPrimaryKeyWarning(PiscesWarning):
     def __init__(self):
         message = "This table has no primary key, which means you can't use ORM edit or delete operations. If you don't want to see this warning, set '__no_primary_key__ = True'."
@@ -71,6 +81,11 @@ class PrimaryKeyConflict(PiscesError):
 class NoSuchColumn(PiscesError):
     def __init__(self, column_name: str):
         message = f"No such column: '{column_name}'"
+        super().__init__(message)
+
+class MissingReferenceObject(PiscesError):
+    def __init__(self):
+        message = "there's FieldRef in filter, but no ref obj input."
         super().__init__(message)
 
 

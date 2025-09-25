@@ -43,7 +43,7 @@ with engine.session() as session:
     session.commit()
 
 with engine.session() as session:
-    test_book:Book = session.get_first(Book, title="Harry Potter and the Philosopher's Stone")
+    test_book:Book = session.get_first(Book, Book.title=="Harry Potter and the Philosopher's Stone")
     print(test_book)
     test_author:Author = test_book.author
     print(test_author)

@@ -25,7 +25,16 @@ class PiscesTime(datetime):
     
     @classmethod
     def from_datetime(cls, datetime_obj:datetime):
-        return cls.fromtimestamp(datetime_obj.timestamp())
+        return cls(
+            datetime_obj.year,
+            datetime_obj.month,
+            datetime_obj.day,
+            datetime_obj.hour,
+            datetime_obj.minute,
+            datetime_obj.second,
+            datetime_obj.microsecond,
+            datetime_obj.tzinfo
+        )
     
     def to_database(self, date_only=False, time_shift:int|timezone=0) -> str:
         if isinstance(time_shift, int):

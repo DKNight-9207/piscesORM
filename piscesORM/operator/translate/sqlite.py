@@ -1,5 +1,7 @@
 from .. import *
-from ...column import Column
+from ...column import Column, FieldRef
+from ...table import Table
+from ... import errors
 
 SQLITE_TRANSLATE_MAP = {
     # 邏輯
@@ -33,7 +35,7 @@ SQLITE_TRANSLATE_MAP = {
 }
 
 
-def translate_sqlite(op: Operator) -> str:
+def translate_sqlite(op: Operator, ref_obj:Table=None) -> str:
     """把 Operator 物件轉換成 SQLite 可執行的 SQL (WHERE 子句片段)"""
     t = SQLITE_TRANSLATE_MAP.get(type(op))
     parts = []
@@ -47,6 +49,10 @@ def translate_sqlite(op: Operator) -> str:
                 parts.append(translate_part)
         elif isinstance(p, Column):
             parts.append(f'"{p._name}"')
+        elif isinstance(p, FieldRef):
+            if ref_obj is None:
+                raise errors.MissingReferenceObject()
+            parts.append(f"'{getattr(ref_obj, p.name)}'")
         else:
             parts.append(repr(p))
 
@@ -81,7 +87,7 @@ def translate_sqlite(op: Operator) -> str:
     raise RuntimeError(f"unknown optrator in translate\n - object: {op}\n - type: {type(op)}")
 
 
-def translate_sqlite_security(op: Operator) -> tuple[str, list]:
+def translate_sqlite_security(op: Operator, ref_obj:Table=None) -> tuple[str, list]:
     t = SQLITE_TRANSLATE_MAP.get(type(op))
     sql_parts = []
     params = []
@@ -96,6 +102,11 @@ def translate_sqlite_security(op: Operator) -> tuple[str, list]:
             params.extend(sub_params)
         elif isinstance(p, Column):
             sql_parts.append(f'"{p._name}"')
+        elif isinstance(p, FieldRef):
+            if ref_obj is None:
+                raise errors.MissingReferenceObject()
+            sql_parts.append("?")
+            params.append(getattr(ref_obj, p.name, None))
         else:
             sql_parts.append("?")
             params.append(p)
@@ -127,3 +138,4 @@ def translate_sqlite_security(op: Operator) -> tuple[str, list]:
         return f"({sql_parts[0]} {t} {sql_parts[1]})", params
 
     raise RuntimeError(f"unknown operator in translate_sqlite_security\n - object: {op}\n - type: {type(op)}")
+

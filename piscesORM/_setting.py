@@ -1,4 +1,5 @@
-
+__all__ = ["setting"]
+import logging
 
 class Global_setting:
     """
@@ -11,6 +12,7 @@ class Global_setting:
     """ Time between lock data garbage collection cycles (sec, float)"""
     modified_obj_output = False
     """ Using beautified output, you can visually see the information when you print(table)."""
+    _debug_level = logging.ERROR
     
     
 

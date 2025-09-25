@@ -62,6 +62,9 @@ class Operator:
     def __truediv__(self, value):
         return Divide(self, value)
     
+    def __floordiv__(self, value):
+        return Floor(self/value)
+    
     def __mod__(self, value):
         return Modulo(self, value)
     

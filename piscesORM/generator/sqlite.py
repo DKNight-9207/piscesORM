@@ -9,6 +9,7 @@ from ..import operator
 import warnings
 from . import BasicGenerator
 from ..operator.translate import translate_sqlite_security
+logger = logging.getLogger("piscesORM")
 
 class SQLiteGenerator(BasicGenerator):
     @staticmethod
@@ -54,12 +55,16 @@ class SQLiteGenerator(BasicGenerator):
             warnings.warn(errors.NoPrimaryKeyWarning())
 
         columns_sql = ", ".join(column_defs)
-        return f"CREATE TABLE {'IF NOT EXISTS' if exist_ok else ''} {table_name} ({columns_sql});"
+        sql = f"CREATE TABLE {'IF NOT EXISTS ' if exist_ok else ''}{table_name} ({columns_sql});"
+        logger.debug(f"Generate sql: {sql}")
+        return sql
     
     @staticmethod
     def generate_structure(table):
         table_name = table.__table_name__ or table.__name__
-        return f"PRAGMA table_info({table_name})"
+        sql = f"PRAGMA table_info({table_name})"
+        logger.debug(f"Generate sql: {sql}")
+        return sql
     
     @staticmethod
     def generate_insert_column(table:Type[Table], org_starcture):
@@ -87,11 +92,12 @@ class SQLiteGenerator(BasicGenerator):
                 full_col_sql = f"{quote_ident(col_name)} {col_type} {constraint_sql} {default_sql}".strip()
                 sql = f"ALTER TABLE {table_name} ADD COLUMN {full_col_sql};"
                 sqls.append(sql)
+                logger.debug(f"Generate sql: {sqls}")
             return sqls
         return None
 
     @staticmethod
-    def generate_insert(obj):
+    def generate_insert(obj:Table):
         table_name = obj.__table_name__ or obj.__class__.__name__
         column_names = []
         placeholders = []
@@ -106,10 +112,11 @@ class SQLiteGenerator(BasicGenerator):
             values.append(column.to_db(value))
 
         sql = f"INSERT INTO {table_name} ({', '.join(column_names)}) VALUES ({', '.join(placeholders)})"
+        logger.debug(f"Generate sql: {sql}, {values}")
         return sql, tuple(values)
     
     @staticmethod
-    def generate_update_object(obj, merge = True):
+    def generate_update_object(obj:Table, merge = True):
         table_name = obj.__table_name__ or obj.__class__.__name__
         set_parts = []
         set_values = []
@@ -133,10 +140,11 @@ class SQLiteGenerator(BasicGenerator):
             return None , tuple()
 
         sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE {' AND '.join(where_parts)}"
+        logger.debug(f"Generate sql: {sql}, {set_values + where_values}")
         return sql, tuple(set_values + where_values)
     
     @staticmethod
-    def generate_update(table, filters, **target):
+    def generate_update(table:Type[Table], *filters, **target):
         table_name = table.__table_name__ or table.__name__
         set_parts = []
         set_values = []
@@ -146,14 +154,17 @@ class SQLiteGenerator(BasicGenerator):
         for col_name, value in target.items():
             if col_name not in key_list:
                 raise errors.NoSuchColumn(col_name)
+            set_parts.append(f"{col_name} = ?")
+            set_values.append(table._columns[col_name].to_db(value))
             
 
         sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE {where_sql}"
-        return sql, tuple()
+        logger.debug(f"Generate sql: {sql}, {set_values + list(where_values)}")
+        return sql, tuple(set_values + list(where_values))
     
     @staticmethod
     def generate_delete(obj_or_table: Table|Type[Table], filters=None, delete_all_protect=True):
-        table_name = obj_or_table.__table_name__ or obj_or_table.__name__
+        table_name = get_table_name(obj_or_table)
 
         # delete by object
         if isinstance(obj_or_table, Table):
@@ -168,9 +179,10 @@ class SQLiteGenerator(BasicGenerator):
                     where_values.append(column.to_db(value))
 
             if not where_parts:
-                raise ValueError("Cannot delete without a primary key.")
+                raise errors.NoPrimaryKeyError("Cannot delete without a primary key.")
 
             sql = f"DELETE FROM {table_name} WHERE {' AND '.join(where_parts)}"
+            logger.debug(f"Generate sql: {sql}, {where_values}")
             return sql, tuple(where_values)
         else: # delete by filters
             if not filters:
@@ -181,10 +193,11 @@ class SQLiteGenerator(BasicGenerator):
             else:
                 where_clause, values = translate_sqlite_security(filters)
                 sql = f"DELETE FROM {table_name} WHERE {where_clause}"
+                logger.debug(f"Generate sql: {sql}, {values}")
                 return sql, tuple(values)
     
     @staticmethod
-    def generate_index(table):
+    def generate_index(table:Type[Table]):
         table_name = table.__table_name__ or table.__name__
         sqls = []
         for col_name in table._indexes:
@@ -193,32 +206,39 @@ class SQLiteGenerator(BasicGenerator):
             unique_sql = "UNIQUE " if col.unique else ""
             sql = f"CREATE {unique_sql}INDEX IF NOT EXISTS {quote_ident(index_name)} ON {table_name} ({quote_ident(col_name)})"
             sqls.append(sql)
+        logger.debug(f"Generate sql: {sqls}")
         return sqls
     
     @staticmethod
-    def generate_drop(table):
+    def generate_drop(table:Type[Table]):
         table_name = table.__table_name__ or table.__name__
-        return f"DROP table {table_name}"
+        sql = f"DROP table {table_name}"
+        logger.debug(f"Generate sql: {sql}")
+        return sql
     
     @staticmethod
-    def generate_select(table: Type[Table], filters=None) -> tuple[str, list]:
+    def generate_select(table: Type[Table], filters=None, ref_obj:Table = None) -> tuple[str, list]:
         table_name = table.__table_name__ or table.__name__
+
         sql = f"SELECT * FROM {table_name}"
         if filters:
-            where_clause, values = translate_sqlite_security(filters)
+            where_clause, values = translate_sqlite_security(filters, ref_obj)
             sql += " WHERE " + where_clause
         else:
             values = []
+        logger.debug(f"Generate sql: {sql}, {values}")
         return sql, values
     
     @staticmethod
-    def generate_count(table: Type[Table], filters=None) -> tuple[str, list]:
+    def generate_count(table: Type[Table], filters=None, ref_obj:Table = None) -> tuple[str, list]:
         table_name = table.__table_name__ or table.__name__
+
         sql = f"SELECT COUNT(*) FROM {table_name}"
         values = []
         if filters:
-            where_clause, values = translate_sqlite_security(filters)
+            where_clause, values = translate_sqlite_security(filters, ref_obj)
             sql += " WHERE " + where_clause
+        logger.debug(f"Generate sql: {sql}, {values}")
         return sql, values
 
 def quote_ident(name: str) -> str:
@@ -233,3 +253,8 @@ def format_default(val: any) -> str:
         return str(val)
     s = str(val).replace("'", "''")  # escape single quotes
     return f"'{s}'"
+
+def get_table_name(obj_or_table: Table | Type[Table]) -> str:
+    if isinstance(obj_or_table, type):
+        return obj_or_table.__table_name__ or obj_or_table.__name__
+    return obj_or_table.__table_name__ or obj_or_table.__class__.__name__

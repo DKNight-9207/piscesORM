@@ -1,5 +1,8 @@
-from .column import T, Column
-from .basic import Integer, Text, Blob, Real, Numeric
-from .extend import Json, Array, EnumType, EnumArray, Boolean, Time
+__all__ = ["Column", "Integer", "Text", "Blob", "Real", "Numeric",
+           "Json", "Array", "EnumType", "EnumArray", "Boolean", "Time",
+           "Relationship", "FieldRef"]
 
-from .relationship import Relationship, FieldRef
+from .column import *
+from .basic import *
+from .extend import *
+from .relationship import *

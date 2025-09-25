@@ -18,13 +18,13 @@
 <summary><strong>class Column</strong></summary>
 
 此類為基本欄位，如果要自訂義資料輸入/輸出，請繼承它
-- `type: str`：資料庫端欄位型別
+- `type: str | dict[str, str]`：資料庫端欄位型別，傳入`str`代表對所有資料庫都使用此型態
 - `primary_key: bool`：是否為主鍵
-- `not_null: bool`
-- `auto_increment: bool`
-- `unique: bool`
-- `default: Any`
-- `index: bool`
+- `not_null: bool`:是否不允許空值
+- `auto_increment: bool`:自動增加
+- `unique: bool`:是否唯一
+- `default: Any`:預設值
+- `index: bool`:索引
 
 ### 🛠 方法
 
@@ -35,37 +35,62 @@
 </details>
 
 <details>
-<summary><strong>class Integer / Text / Blob / Real</strong></summary>
+<summary><strong>class piscesORM.column.Integer</strong></summary>
+資料庫內建基本整數型別
 
-資料庫內建基本型別，無額外處理。
+額外功能:
+- `enum: IntEnum|IntFlag`: 自動把內容打包成Intenum/IntFlag。
 </details>
 
 <details>
-<summary><strong>class Boolean</strong></summary>
+<summary><strong>class piscesORM.column.Text</strong></summary>
+資料庫內建基本文字型別
+
+額外功能:
+- `enum: StrEnum`: 自動把內容打包成StrEnum。
+</details>
+
+<details>
+<summary><strong>class piscesORM.column.Blob</strong></summary>
+資料庫內建基本二進制型別。
+</details>
+
+<details>
+<summary><strong>class piscesORM.column.Real</strong></summary>
+資料庫內建基本浮點數型別。
+</details>
+
+<details>
+<summary><strong>class piscesORM.column.Numeric</strong></summary>
+資料庫內建基本高精度浮點數型別。
+</details>
+
+<details>
+<summary><strong>class piscesORM.column.Boolean</strong></summary>
 
 官方實現型別，讓資料庫支援布林值
 </details>
 
 <details>
-<summary><strong>class Json</strong></summary>
+<summary><strong>class piscesORM.column.Json</strong></summary>
 
-官方實現型別，取出後會是字典
+官方實現型別，取出後會是`dict`
 </details>
 
 <details>
-<summary><strong>class StringArray</strong></summary>
+<summary><strong>class piscesORM.column.StringArray</strong></summary>
 
 官方實現型別，取出後是`list[str]`
 </details>
 
 <details>
-<summary><strong>class InterArray</strong></summary>
+<summary><strong>class piscesORM.column.InterArray</strong></summary>
 
 官方實現型別，取出後是`list[int]`
 </details>
 
 <details>
-<summary><strong>class EnumType</strong></summary>
+<summary><strong>class piscesORM.column.EnumType</strong></summary>
 
 官方特殊型別，取出後是會打包成Enum
 - `enum: Enum`：目標Enum類
@@ -74,13 +99,19 @@
 </details>
 
 <details>
-<summary><strong>class EnumArray</strong></summary>
+<summary><strong>class piscesORM.column.EnumArray</strong></summary>
 
 官方特殊型別，和上者相同，不過取出後會是`list[Enum]`
 </details>
 
 <details>
-<summary><strong>class Relationship</strong></summary>
+<summary><strong>class piscesORM.column.Time</strong></summary>
+
+官方特殊型別，取出後會是`piscesORM.PiscesTime`。簡單來說就是加了額外方便功能的datetime
+</details>
+
+<details>
+<summary><strong>class piscesORM.column.Relationship</strong></summary>
 
 此類為關聯記號，資料庫搜尋後隨後會加載指定目標
 - `table: Table`：關聯的表
@@ -89,7 +120,7 @@
 </details>
 
 <details>
-<summary><strong>class FieldRef</strong></summary>
+<summary><strong>class piscesORM.column.FieldRef</strong></summary>
 
 此類為關聯特殊標記，代表關聯值來自自身，應該事後解析
 - `name: str`：關聯的自身欄位
@@ -107,13 +138,49 @@ class Book(Table):
 
 ---
 
-## piscesORM.LogicalOperator 運算子
-在搜尋條件時，除了可以直接 column=value 做基本`等於`判斷，也可用這裡的標記做進一步的判斷
+## piscesORM.operator 運算子
+這個東西和內部實現有關，且主要作為標籤用。應用層僅需對作為基底的Operator有所了解即可
+
+<details>
+<summary><strong>class piscesORM.operator.Operator</strong></summary>
+
+基本運算子標籤
+
+- `abs()`: 表示取絕對值
+- `ceiling()`: 表示向上取整
+- `floor()`: 表示向下取整
+- `round()`: 表示四捨五入到整數
+- `sqrt()`: 表示取更號
+- `isin(value: list)`: 判斷一個值是否存在於一組給定的列表中。
+- `|`: 或運算
+- `&`: 且運算
+- `+`: 加運算
+- `-`: 減運算
+- `*`: 乘運算
+- `/`: 除運算
+- `//`: 整數除法。`a//b`等價於`FLOOR(a/b)`
+- `%`: 取餘運算
+- `**`: 指數運算
+
+註：由於python解釋器解析時會從左到右，因此請多多善加利用括號，否則容易報錯
+</details>
 
 <details>
 <summary><strong>class LogicalOperator</strong></summary>
 
-基本運算子，沒有特別意義
+基本運算子標籤，代表這是邏輯運算子
+</details>
+
+<details>
+<summary><strong>class  MathOperator</strong></summary>
+
+基本運算子標籤，代表這是數學運算子
+</details>
+
+<details>
+<summary><strong>class  OneInputMathOperator</strong></summary>
+
+基本運算子標籤，代表這是數學運算子，且僅允許一個輸入
 </details>
 
 <details>

@@ -3,7 +3,7 @@ from typing import Any
 from decimal import Decimal
 import logging
 from enum import IntEnum, IntFlag, StrEnum
-from . import Column
+from .column import Column
 logger = logger = logging.getLogger("piscesORM")
 
 class Integer(Column[int]):

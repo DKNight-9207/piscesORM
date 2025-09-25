@@ -11,6 +11,7 @@ from typing import TypeVar, Type, List, Optional, Dict, Any, Union
 from .._setting import setting
 from .. import errors
 from . import _T
+from .toolbox import _get_autounlock_time
 
 
 logger = logging.getLogger("piscesORM")
@@ -257,17 +258,6 @@ class AsyncRowLock:
             if self.lock_owner is None:
                 return False
             return time.time() > self.autounlock_time
-
-# =========== toolbox ===========
-def _get_autounlock_time(timeout:float):
-    return timeout if timeout is not None else setting.lock_auto_release_time
-
-
-# 產生鎖 key 的函數
-def generateLockKey(model: Type[_T], filters) -> str:
-    # 依據 model 與 filters 產生唯一 key
-    key = f"{model.__name__}:" + ",".join(f"{k}={v}" for k, v in sorted(filters.items()))
-    return key
 
 # 實例化管理器
 asyncLockManager = AsyncLockManager()
