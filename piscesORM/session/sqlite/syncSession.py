@@ -225,16 +225,8 @@ class SyncSQLiteSession(SyncBaseSession):
             if structure_update:
                 self.update_table_structure(table, rebuild)
 
-    def _resolve_filter(self, obj, filter_dict):
-        resolved = {}
-        for k, v in filter_dict.items():
-            if isinstance(v, FieldRef):
-                resolved[k] = getattr(obj, v.name)
-            else:
-                resolved[k] = v
-        return resolved
 
-    def _load_relationship(self, obj, _traces=None):
+    def _load_relationship(self, obj:Table, _traces=None):
         if _traces is None:
             _traces = {obj.__hash__():obj}
 
@@ -260,6 +252,3 @@ class SyncSQLiteSession(SyncBaseSession):
                 self._load_relationship(table_data, _traces)
             setattr(obj, name, table_data)
             obj._initialized = True
-
-    def _depack_fieldRef(filter:Operator, ref_obj:Table):
-        """預處理，把FieldRef變成一般值"""

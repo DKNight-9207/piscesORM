@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PiscesORM"
-version = "0.0.4"
+version = "0.0.4.1"
 description = "A lightweight, easy-used ORM for Python"
 authors = [
   { name="DK-Night", email="yuchen920707@gmail.com" }

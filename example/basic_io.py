@@ -16,7 +16,7 @@ class Book(Table):
     id = Integer(primary_key=True, auto_increment=True)
     title = Text()
     author_name = Text()
-    author = Relationship(Author, name=FieldRef("author_name"))
+    author = Relationship(Author, Author.name==FieldRef("author_name"))
 
 engine = SyncSQLiteEngine()
 engine.initialize()

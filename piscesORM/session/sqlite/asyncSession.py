@@ -63,40 +63,34 @@ class AsyncSQLiteSession(AsyncBaseSession):
         except sqlite3.IntegrityError:
             raise errors.PrimaryKeyConflict()
 
-    async def _filter(self, table: Type[Table], *filters, **conditions) -> List[Table]:
-        f = None
+    async def _filter(self, table: Type[Table], *filters, ref_obj:Table=None) -> List[Table]:
+        combined_filter = None
         if filters:
-            for filter in filters:
-                f = filter if f is None else f & eq
-        if conditions:
-            for col_name, value in conditions.items():
-                col_obj = table._columns.get(col_name, None)
-                if col_obj is None:
-                    raise errors.NoSuchColumn(col_name)
-                eq = Equal(col_obj, value)
-                f = eq if f is None else f & eq
-
-        sql, values = self._generator.generate_select(table, f)
-
+            for f in filters:
+                if combined_filter is None:
+                    combined_filter = f
+                else:
+                    combined_filter &= f
+        sql, values = self._generator.generate_select(table, combined_filter, ref_obj)
         async with self._conn.execute(sql, values) as cursor:
             rows = await cursor.fetchall()
             objs = [table.from_row(dict(row)) for row in rows]
             return objs
 
-    async def get_first(self, table, *filters, load_relationships=True, read_only=False) -> Table | None:
-        result = await self._filter(table, *filters)
-        if result is not None:
+    async def get_first(self, table, *filters, load_relationships=True, read_only=False, ref_obj:Table=None) -> Table | None:
+        result = await self._filter(table, *filters, ref_obj=ref_obj)
+        if result:
             result = result[0]
             if load_relationships:
-                await self._load_relationship(result)
+                await self._load_relationship(result, ref_obj=ref_obj)
             result._initialized = True
         return result if result else None
 
-    async def get_all(self, table, *filters, load_relationships=True, read_only=False) -> List[Table]:
-        result = await self._filter(table, *filters)
+    async def get_all(self, table, *filters, load_relationships=True, read_only=False, ref_obj:Table=None) -> List[Table]:
+        result = await self._filter(table, *filters, ref_obj=ref_obj)
         for obj in result:
             if load_relationships:
-                await self._load_relationship(obj)
+                await self._load_relationship(obj, ref_obj=ref_obj)
             obj._initialized = True
         return result
 
@@ -190,41 +184,29 @@ class AsyncSQLiteSession(AsyncBaseSession):
             await self.create_table(table, True)
             if structure_update:
                 await self.update_table_structure(table, rebuild)
-                
-    def _resolve_filter(self, obj, filter_dict):
-        resolved = {}
-        for k, v in filter_dict.items():
-            if isinstance(v, FieldRef):
-                resolved[k] = getattr(obj, v.name)
-            else:
-                resolved[k] = v
-        return resolved
 
-    async def _load_relationship(self, obj, _traces=None):
+    async def _load_relationship(self, obj: Table, _traces=None, ref_obj:Table=None):
         if _traces is None:
             _traces = {obj.__hash__():obj}
 
         for name, relation in obj._relationship.items():
-            # 解析 filter 裡的 FieldRef
-            resolved_filter = self._resolve_filter(obj, relation.filter)
-            
             if relation.plural_data:
-                table_data = await self.get_all(relation.get_table(), load_relationships=False, **resolved_filter)
+                table_data = await self.get_all(relation.get_table(), relation.fix_filters(), load_relationships=False, ref_obj=obj)
                 if not table_data:
                     continue
                 for item in table_data:
                     if item.__hash__() in _traces:
                         continue
                     _traces[item.__hash__()] = item
-                    await self._load_relationship(item, _traces)
+                    await self._load_relationship(item, _traces, ref_obj=obj)
             else:
-                table_data = await self.get_first(relation.get_table(), load_relationships=False, **resolved_filter)
+                table_data = await self.get_first(relation.get_table(), relation.fix_filters(), load_relationships=False, ref_obj=obj)
                 if table_data is None:
                     continue
                 if table_data.__hash__() in _traces:
                     continue
                 _traces[obj.__hash__()] = table_data
-                await self._load_relationship(table_data, _traces)
+                await self._load_relationship(table_data, _traces, ref_obj=obj)
             setattr(obj, name, table_data)
 
     async def _update_relationship(self, obj: Table, traces: set[Table] = None) -> None:
