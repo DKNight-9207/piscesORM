@@ -1,11 +1,8 @@
 from __future__ import annotations
-from typing import Type, Any, overload
+from typing import Type
 from ..table import Table
-from ..column import Column
 import logging
-from abc import ABC, abstractmethod
 from .. import errors
-from ..import operator
 import warnings
 from . import BasicGenerator
 from ..operator.translate import translate_sqlite_security
@@ -116,7 +113,7 @@ class SQLiteGenerator(BasicGenerator):
         return sql, tuple(values)
     
     @staticmethod
-    def generate_update_object(obj:Table, merge = True):
+    def generate_update_object(obj:Table, cover = False):
         table_name = obj.__table_name__ or obj.__class__.__name__
         set_parts = []
         set_values = []
@@ -132,7 +129,7 @@ class SQLiteGenerator(BasicGenerator):
                 where_parts.append(f"{name} = ?")
                 where_values.append(column.to_db(value))
             elif not column.auto_increment:
-                if merge or name in obj._edited:
+                if cover or name in obj._edited:
                     set_parts.append(f"{name} = ?")
                     set_values.append(column.to_db(value))
 
@@ -217,15 +214,56 @@ class SQLiteGenerator(BasicGenerator):
         return sql
     
     @staticmethod
-    def generate_select(table: Type[Table], filters=None, ref_obj:Table = None) -> tuple[str, list]:
+    def generate_select(table: Type[Table], columns=None, filters=None, order_by=None, limit=None, ref_obj:Table=None) -> tuple[str, list]:
         table_name = table.__table_name__ or table.__name__
+        valid_columns = table._columns.keys()
+        logger.debug(f"try to generate select:")
+        logger.debug(f" - table:    {type(table)}")
+        logger.debug(f" - columns:  {columns}")
+        logger.debug(f" - filters:  {repr(filters)}")
+        logger.debug(f" - order_by: {order_by}")
+        logger.debug(f" - limit:    {limit}")
+        logger.debug(f" - ref_obj:  {ref_obj}")
 
-        sql = f"SELECT * FROM {table_name}"
+        if not columns:
+            select_clause = "*"
+        else:
+            if isinstance(columns, str):
+                columns = [columns]
+
+            for col in columns:
+                if col not in valid_columns:
+                    raise errors.NoSuchColumn(col)
+            select_clause = ", ".join(columns)    
+        sql = f"SELECT {select_clause} FROM {table_name}"
+        values = []
+
         if filters:
             where_clause, values = translate_sqlite_security(filters, ref_obj)
             sql += " WHERE " + where_clause
-        else:
-            values = []
+            
+        if order_by:
+            if isinstance(order_by, str):
+                order_by = [order_by]
+            oder_by_clause = []
+            for col in order_by:
+                if col.startswith("-"):
+                    col_name = col[1:]
+                    direction = "DESC"
+                else:
+                    col_name = col
+                    direction = "ASC"
+
+                if col_name not in valid_columns:
+                    raise errors.NoSuchColumn(col_name)
+                oder_by_clause.append(f"{col_name} {direction}")
+
+            if oder_by_clause:
+                sql += " ORDER BY " + ", ".join(oder_by_clause)
+    
+        if isinstance(limit, int) and limit > 0: # SQL inject protect
+            sql += f" LIMIT {limit}"
+
         logger.debug(f"Generate sql: {sql}, {values}")
         return sql, values
     

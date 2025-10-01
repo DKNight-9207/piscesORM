@@ -1,12 +1,11 @@
 from __future__ import annotations
-from typing import Any, TypeVar, Generic
+from typing import Any
 import logging
 from .. import operator
 logger = logger = logging.getLogger("piscesORM")
 
-T = TypeVar('_T')
 
-class Column(Generic[T]):
+class Column:
     """
     The basic Column of a table.
 
@@ -38,9 +37,9 @@ class Column(Generic[T]):
         self.unique = unique
         self.default = self.normalize_default(default)
         self.index = index
-        self._name = None
 
         self._name: str|None = None  # 欄位名稱
+        self._neg_tag = False
 
     def __set_name__(self, owner, name: str):
         self._name = name
@@ -130,3 +129,35 @@ class Column(Generic[T]):
     
     def __pow__(self, value):
         return operator.Power(self, value)
+    
+    def __copy__(self):
+        self_type = type(self)
+        if self_type == Column:
+            new_obj = self_type(
+                type=self._type,
+                primary_key=self.primary_key,
+                not_null=self.not_null,
+                auto_increment=self.auto_increment,
+                unique=self.unique,
+                default=self.default,
+                index=self.index
+            )
+        else:
+            new_obj = self_type(
+                primary_key=self.primary_key,
+                not_null=self.not_null,
+                auto_increment=self.auto_increment,
+                unique=self.unique,
+                default=self.default,
+                index=self.index
+            )
+        new_obj._name = self._name
+        new_obj._neg_tag = self._neg_tag
+        return new_obj
+    
+    def __neg__(self):
+        import copy
+
+        obj = copy.copy(self)
+        obj._neg_tag = not self._neg_tag
+        return obj

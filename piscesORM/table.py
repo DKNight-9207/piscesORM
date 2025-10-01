@@ -74,7 +74,7 @@ class Table(metaclass=TableMeta):
         if setting.modified_obj_output:
             from textwrap import shorten
 
-            table_name = self.__table_name__ or self.__class__.__name__
+            table_name = self.__table_name__ or type(self).__name__
             lines = []
             lines.append(f"┌─ Table: {table_name} ─{'─' * (30 - len(table_name))}")
             lines.append("│ {:<15} {:<12} {:<30}".format("Column", "Type", "Value"))
@@ -88,7 +88,7 @@ class Table(metaclass=TableMeta):
 
                 edited_mark = "*" if name in self._edited else " "
                 lines.append("│{:<1} {:<14} {:<12} {:<30}".format(
-                    edited_mark, name, col.__class__.__name__, value_str
+                    edited_mark, name, type(col).__name__, value_str
                 ))
 
             lines.append("└" + "─" * 60)
@@ -96,19 +96,22 @@ class Table(metaclass=TableMeta):
         return super().__str__()
     
     def _get_pks(self):
+        """
+        return the tuple: (<table_name>, (<pks>))
+        """
         pks_names = [name for name, col in self._columns.items() if col.primary_key]
         if not pks_names:
-            return (self.__table_name__ or self.__class__.__name__, None)
+            return (self.__table_name__ or type(self).__name__, None)
 
         pks_values = tuple(getattr(self, name) for name in pks_names)
-        return (self.__table_name__ or self.__class__.__name__, pks_values)
+        return (self.__table_name__ or type(self).__name__, pks_values)
     
     def __hash__(self):
         pks = self._get_pks()
         return hash(pks)
     
     def __eq__(self, value):
-        if isinstance(value, self.__class__):
+        if isinstance(value, type(self)):
             pks = self._get_pks()
             if pks:
                 return pks == value._get_pks() 

@@ -94,7 +94,7 @@ def translate_sqlite_security(op: Operator, ref_obj:Table=None) -> tuple[str, li
 
     for p in op.parts:
         if isinstance(p, Operator):
-            sql_part, sub_params = translate_sqlite_security(p)
+            sql_part, sub_params = translate_sqlite_security(p, ref_obj)
             if isinstance(p, (OR, AND)):
                 sql_parts.append(f"({sql_part})")
             else:

@@ -71,6 +71,11 @@ class Operator:
     def __pow__(self, value):
         return Power(self, value)
     
+    def __repr__(self):
+        cls_name = type(self).__name__
+        parts_str = ", ".join(repr(p) if isinstance(p, Operator) else str(p) for p in self.parts)
+        return f"{cls_name}({parts_str})"
+    
 class LogicalOperator(Operator): pass
 class MathOperator(Operator): pass
 class OneInputMathOperator(MathOperator):

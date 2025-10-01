@@ -10,7 +10,7 @@ import traceback
 from datetime import datetime
 logger = logger = logging.getLogger("piscesORM")
 
-class Boolean(Column[bool]):
+class Boolean(Column):
     def __init__(self, primary_key = False, not_null = False, auto_increment = False, unique = False, default = None, index = False):
         super().__init__("INTEGER", primary_key, not_null, auto_increment, unique, default, index)
 
@@ -20,7 +20,7 @@ class Boolean(Column[bool]):
     def from_db(self, value):
         return bool(value)
 
-class Json(Column[dict]):
+class Json(Column):
     def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("TEXT", primary_key, not_null, auto_increment, unique, default, index)
 
@@ -43,7 +43,7 @@ class Json(Column[dict]):
             return {}
         return default
 
-class Array(Column[list[Any]]):
+class Array(Column):
     """
     It's a array that support by python json. those type whose support by json.dump() can be support by this.
     - enum: 
@@ -69,7 +69,7 @@ class Array(Column[list[Any]]):
         return json.loads(value)
 
     
-class EnumType(Column[Enum]):
+class EnumType(Column):
     """
     
     
@@ -107,7 +107,7 @@ class EnumType(Column[Enum]):
         except Exception as e:
             logger.error(f"EnumArray from_db error: {e}")
     
-class EnumArray(Column[list[Enum]]):
+class EnumArray(Column):
     """
     If the enum value only is `int` or `str`, the basic `Array` is a better choise.\n
     EnumArray not support mixing enum, also is for Array.
@@ -157,7 +157,7 @@ class EnumArray(Column[list[Enum]]):
             else:
                 default = ",".join(v.name for v in default)
 
-class Time(Column[PiscesTime]):
+class Time(Column):
     def __init__(self, primary_key=False, not_null=False, auto_increment=False, unique=False, default=None, index=False):
         super().__init__("DATETIME", primary_key, not_null, auto_increment, unique, default, index)
 

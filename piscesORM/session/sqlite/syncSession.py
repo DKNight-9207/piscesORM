@@ -1,11 +1,12 @@
 import sqlite3
 from typing import Type, List
+import functools
 from ..basic import SyncBaseSession
 from ...generator import SQLiteGenerator
 from ...table import Table
 from ...operator import Equal, Operator
 from ...base import TABLE_REGISTRY
-from ...column import FieldRef
+from ...column import FieldRef, Column
 from ... import errors
 from logging import getLogger
 logger = getLogger("piscesORM")
@@ -25,153 +26,21 @@ class SyncSQLiteSession(SyncBaseSession):
             return False
 
     def execute(self, sql:str, value=None):
-        return self._conn.execute(sql, value or [])
+        return self._run_sql(sql, value or [])
 
     def commit(self):
         self._conn.commit()
 
-    def create_table(self, table: Type[Table], exist_ok: bool = False):
-        sql = self._generator.generate_create_table(table, exist_ok)
-        self._conn.execute(sql)
+    def rollback(self):
+        self._conn.rollback()
 
-        for index_sql in self._generator.generate_index(table):
-            self._conn.execute(index_sql)
+    def initialize(self, structure_update=False, rebuild=False):
+        for table in TABLE_REGISTRY.values():
+            self.create_table(table, True)
+            if structure_update:
+                self.update_table_structure(table, rebuild)
 
-        if self._auto_commit:
-            self._conn.commit()
-
-    def insert(self, obj: Table):
-        sql, values = self._generator.generate_insert(obj)
-        try:
-            self._conn.execute(sql, values)
-
-            if self._auto_commit:
-                self._conn.commit()
-        except sqlite3.IntegrityError:
-            raise errors.PrimaryKeyConflict()
-
-
-    def insert_many(self, objs: List[Table]):
-        if not objs:
-            return
-        
-        sql, _ = self._generator.generate_insert(objs[0])
-        all_values = [self._generator.generate_insert(obj)[1] for obj in objs]
-
-        try:
-            self._conn.executemany(sql, all_values)
-            if self._auto_commit:
-                self._conn.commit()
-        except sqlite3.IntegrityError:
-            raise errors.PrimaryKeyConflict()
-    
-    def _filter(self, table: Type[Table]|Table, *filters, ref_obj:Table=None) -> List[Table]:
-        combined_filter = None
-        if filters:
-            for f in filters:
-                if combined_filter is None:
-                    combined_filter = f
-                else:
-                    combined_filter &= f
-        
-        sql, values = self._generator.generate_select(table, combined_filter, ref_obj)
-
-        cursor = self._conn.execute(sql, values)
-        rows = cursor.fetchall()
-        objs = [table.from_row(dict(row)) for row in rows]
-        return objs
-    
-    def _get_first(self, table: Type[Table]|Table, *filters, load_relationships = True, read_only=False, ref_obj:Table=None):
-        if result := self._filter(table, *filters, ref_obj=ref_obj):
-            result = result[0]
-            if load_relationships:
-                self._load_relationship(result)
-            result._initialized = True
-        logger.debug(f"get data: {result._get_pks()}")
-        return result if result else None
-    
-    def get_first(self, table: Type[Table]|Table, *filters, load_relationships = True, read_only=False) -> Table | None:
-        return self._get_first(table, *filters, load_relationships=load_relationships, read_only=read_only)
-    
-    def _get_all(self, table: Type[Table], *filters, load_relationships = True, read_only=False, ref_obj:Table=None):
-        result = self._filter(table, *filters, ref_obj=ref_obj)
-        for obj in result:
-            if load_relationships:
-                self._load_relationship(obj)
-            obj._initialized = True
-        logger.debug(f"get data: {[r._get_pks() for r in result]}")
-        return result
-
-    def get_all(self, table: Type[Table], *filters, load_relationships = True, read_only=False) -> List[Table]:
-        return self._get_all(table, *filters, load_relationships=load_relationships, read_only=read_only)
-        
-    def update(self, obj: Table, merge: bool=True, update_relationship: bool=True) -> None:
-        
-
-        # update relationships
-        if update_relationship:
-            traces = {obj}
-            self._update_relationship(obj, traces=traces)
-        else: 
-            sql, values = self._generator.generate_update(obj, merge=merge)
-            self._conn.execute(sql, values)
-
-        if self._auto_commit:
-            self._conn.commit()
-
-    def _update_relationship(self, obj: Table, traces: set[Table] = None) -> None:
-        if traces is None:
-            traces = {obj}
-        
-        for name, relation in obj._relationship.items():
-            
-            related_data = getattr(obj, name, None)
-            if related_data is None:
-                continue
-            if relation.plural_data:
-                for item in related_data:
-                    if item in traces:
-                        continue
-                    sql, values = self._generator.generate_update(item, merge=True)
-                    self._conn.execute(sql, values)
-                    self._update_relationship(item, traces)
-                    traces.add(item)
-            else:
-                if related_data in traces:
-                    continue
-                sql, values = self._generator.generate_update(related_data, merge=True)
-                self._conn.execute(sql, values)
-                self._update_relationship(related_data, traces)
-                traces.add(related_data)
-            
-
-
-    def delete(self, obj: Table) -> None:
-        sql, values = self._generator.generate_delete(obj)
-        self._conn.execute(sql, values)
-
-        if self._auto_commit:
-            self._conn.commit()
-
-    def count(self, table: Table, filters = None) -> int:
-        sql, values = self._generator.generate_count(table, filters)
-
-        cursor = self._conn.execute(sql, values)
-        row = cursor.fetchone()
-        return row[0] if row else 0
-        
-    def get_table_structure(self, table: Table) -> list[dict]:
-        table_name = table.__table_name__ or table.__name__
-        cursor = self._conn.execute(f"PRAGMA table_info({table_name})")
-        rows = cursor.fetchall()
-        return [dict(row) for row in rows]
-        
     def update_table_structure(self, table: Type[Table], rebuild=False):
-        """
-        Update table structure to sync with definition.
-        - If rebuild=False: Only add missing columns using ALTER TABLE.
-        - If rebuild=True: Rebuild entire table (DROP and recreate).
-        """
         table_name = table.__table_name__ or table.__name__
 
         # 1. Get actual DB columns
@@ -197,7 +66,7 @@ class SyncSQLiteSession(SyncBaseSession):
 
         tmp_table_name =f"{table_name}_tmp_fix"
         create_sql = self._generator.generate_create_table(table, exist_ok=True).replace(table_name, tmp_table_name)
-        self._conn.execute(create_sql)
+        self._run_sql(create_sql)
 
         shared_keys = set(db_columns_list) & defined_columns_set
         shared_keys_sql = ", ".join(shared_keys)
@@ -205,50 +74,220 @@ class SyncSQLiteSession(SyncBaseSession):
             f"INSERT INTO {tmp_table_name} ({shared_keys_sql}) "
             f"SELECT {shared_keys_sql} FROM {table_name};"
         )
-        self._conn.execute(copy_sql)
+        self._run_sql(copy_sql)
 
         # Drop old table and rename new one
-        self._conn.execute(f"DROP TABLE {table_name};")
-        self._conn.execute(f"ALTER TABLE {tmp_table_name} RENAME TO {table_name};")
+        self._run_sql(f"DROP TABLE {table_name};")
+        self._run_sql(f"ALTER TABLE {tmp_table_name} RENAME TO {table_name};")
 
         for sql in self._generator.generate_index(table):
-            self._conn.execute(sql)
+            self._run_sql(sql)
 
-        self._conn.execute("PRAGMA foreign_keys = ON;")
+        self._run_sql("PRAGMA foreign_keys = ON;")
 
         if self._auto_commit:
             self._conn.commit()
 
-    def initialize(self, structure_update=False, rebuild=False):
-        for table in TABLE_REGISTRY.values():
-            self.create_table(table, True)
-            if structure_update:
-                self.update_table_structure(table, rebuild)
+    def create_table(self, table: Type[Table], exist_ok: bool = False):
+        sql = self._generator.generate_create_table(table, exist_ok)
+        self._run_sql(sql)
 
+        for index_sql in self._generator.generate_index(table):
+            self._run_sql(index_sql)
 
-    def _load_relationship(self, obj:Table, _traces=None):
-        if _traces is None:
-            _traces = {obj.__hash__():obj}
+        if self._auto_commit:
+            self._conn.commit()
 
+    def create_join_table(self, table_1, table_2, exist_ok = False):
+        raise RuntimeError("NOT ready yet")
+
+    def drop_table(self, table):
+        if isinstance(table, str):
+            table = TABLE_REGISTRY.get(table)
+        sql = self._generator.generate_drop(table)
+        self._run_sql(sql)
+        self._maybe_commit()
+
+    def insert(self, obj: Table):
+        sql, values = self._generator.generate_insert(obj)
+        self._run_sql(sql, values)
+        self._maybe_commit()
+
+    def insert_many(self, objs: List[Table]):
+        if not objs:
+            return
+        
+        sql, _ = self._generator.generate_insert(objs[0])
+        all_values = [self._generator.generate_insert(obj)[1] for obj in objs]
+        self._run_sql(sql, all_values, True)
+        self._maybe_commit()
+    
+    def _filter(self, table: Type[Table]|Table, *filters, order_by=None, limit=None, ref_obj:Table=None) -> List[Table]:
+        condition = self._combine_filters(*filters)
+        new_order_by = self._fix_order(order_by)
+
+        sql, values = self._generator.generate_select(table, None, condition, new_order_by, limit, ref_obj)
+        rows = self._run_sql(sql, values).fetchall()
+        return [table.from_row(dict(row)) for row in rows]
+    
+    def _get_first(self, table, *filters, order_by=None, limit=None, ref_obj=None, **kwargs):
+        if result := self._filter(table, *filters, order_by=order_by, limit=limit, ref_obj=ref_obj):
+            result = result[0]
+            if kwargs.get("load_relationships", True):
+                self._load_relationship(result)
+            result._initialized = True
+        logger.debug(f"get data: {result._get_pks() if result else 'None'}")
+        return result if result else None
+    
+    def get_first(self, table: Type[Table], *filters:Operator, order_by:str|list[str]=None, limit:int=None, **kwargs) -> Table:
+        return self._get_first(table, *filters, order_by=order_by, limit=limit, **kwargs)
+    
+    def _get_all(self, table: Type[Table]|Table, *filters, order_by:str|list[str]=None, limit:int=None, ref_obj:Table=None, **kwargs):
+        result = self._filter(table, *filters, order_by=order_by, limit=limit, ref_obj=ref_obj)
+        for obj in result:
+            if kwargs.get("load_relationships", True):
+                self._load_relationship(obj)
+            obj._initialized = True
+        logger.debug(f"get data: {[r._get_pks() for r in result]}")
+        return result
+
+    def get_all(self, table: Type[Table], *filters:Operator, order_by:str|list[str]=None, limit:int=None, **kwargs) -> List[Table]:
+        return self._get_all(table, *filters, order_by=order_by, limit=limit, **kwargs)
+        
+    def update(self, table, *filters, **set):
+        sql, values = self._generator.generate_update(table, *filters, **set)
+        self._run_sql(sql, values)
+        self._maybe_commit()
+
+    def merge(self, obj: Table, cover: bool = False) -> None:
+        # update relationships
+        self._update_relationship(obj)
+
+        sql, values = self._generator.generate_update_object(obj, cover)
+        self._run_sql(sql, values)
+        self._maybe_commit()
+
+    def _update_relationship(self, obj: Table, traces: set[Table] = None) -> None:
+        if traces is None:
+            traces = {obj}
+        
         for name, relation in obj._relationship.items():
             
-            
+            related_data = getattr(obj, name, None)
+            if related_data is None:
+                continue
             if relation.plural_data:
-                table_data = self._get_all(relation.get_table(), relation.fix_filters(), load_relationships=False, ref_obj=obj)
-                if not table_data:
-                    continue
-                for item in table_data:
-                    if item.__hash__() in _traces:
+                for item in related_data:
+                    if item in traces:
                         continue
-                    _traces[item.__hash__()] = item
+                    sql, values = self._generator.generate_update(item, merge=True)
+                    self._run_sql(sql, values)
+                    self._update_relationship(item, traces)
+                    traces.add(item)
+            else:
+                if related_data in traces:
+                    continue
+                sql, values = self._generator.generate_update(related_data, merge=True)
+                self._run_sql(sql, values)
+                self._update_relationship(related_data, traces)
+                traces.add(related_data)
+
+    def delete_object(self, obj: Table) -> None:
+        sql, values = self._generator.generate_delete(obj)
+        self._run_sql(sql, values)
+        self._maybe_commit()
+
+    def delete(self, table, *filters):
+        condition = self._combine_filters(*filters)
+        sql, values = self._generator.generate_delete(table, condition)
+        self._run_sql(sql, values)
+        self._maybe_commit()
+
+    def count(self, table: Table, filters = None) -> int:
+        sql, values = self._generator.generate_count(table, filters)
+
+        cursor = self._run_sql(sql, values)
+        row = cursor.fetchone()
+        return row[0] if row else 0
+        
+    def get_table_structure(self, table: Table) -> list[dict]:
+        table_name = table.__table_name__ or table.__name__
+        cursor = self._run_sql(f"PRAGMA table_info({table_name})")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def _load_relationship(self, obj:Table, _traces=None):
+        """
+        def _get_all(self, table: Type[Table]|Table, *filters, order_by:str|list[str]=None, limit:int=None, ref_obj:Table=None, **kwargs):
+            result = self._filter(table, *filters, order_by, limit, ref_obj=ref_obj)
+            for obj in result:
+                if kwargs.get("load_relationships", True):
+                    self._load_relationship(obj)
+                obj._initialized = True
+            logger.debug(f"get data: {[r._get_pks() for r in result]}")
+            return result
+        """
+        if _traces is None:
+            _traces = {obj._get_pks():obj}
+
+        for name, relation in obj._relationship.items():
+            table_data = None
+            if relation.plural_data:
+                table_data = self._get_all(
+                    relation.get_table(), 
+                    relation.fix_filters(), 
+                    ref_obj=obj,
+                    load_relationships=False)
+                for item in table_data:
+                    pk = item._get_pks()
+                    if pk in _traces.keys():
+                        continue
+                    _traces[pk] = item
                     self._load_relationship(item, _traces)
             else:
-                table_data = self._get_first(relation.get_table(), relation.fix_filters(), load_relationships=False, ref_obj=obj)
-                if table_data is None:
-                    continue
-                if table_data.__hash__() in _traces:
-                    continue
-                _traces[obj.__hash__()] = table_data
-                self._load_relationship(table_data, _traces)
+                table_data = self._get_first(
+                    relation.get_table(), 
+                    relation.fix_filters(),
+                    ref_obj=obj,
+                    load_relationships=False)
+                if table_data is not None:
+                    pk = table_data._get_pks()
+                    if pk not in _traces:
+                        _traces[pk] = table_data
+                        self._load_relationship(table_data, _traces)
             setattr(obj, name, table_data)
-            obj._initialized = True
+        obj._initialized = True
+
+    @staticmethod
+    def _combine_filters(*filters:Operator) -> Operator:
+        return functools.reduce(lambda x, y: x & y if x else y, filters or [], None)
+    
+    @staticmethod
+    def _fix_order(orders) -> list[str]:
+        combine_order = []
+        if not isinstance(orders, list):
+            orders = [orders] 
+
+        for ord in orders:
+            if isinstance(ord, Column):
+                combine_order.append(f"-{ord._name}" if ord._neg_tag else ord._name)
+            elif isinstance(ord, str):
+                combine_order.append(ord)
+            else:
+                raise errors.IllegalOrderByValue()
+
+        return combine_order
+
+    def _run_sql(self, sql:str, values=None, many=False):
+        try:
+            cursor = self._conn.executemany(sql, values) if many else self._conn.execute(sql, values or [])
+            return cursor
+        except sqlite3.IntegrityError:
+            raise errors.PrimaryKeyConflict()
+        except sqlite3.DatabaseError as e:
+            logger.error(f"Database error during SQL execution: {sql}, values: {values}")
+            raise
+
+    def _maybe_commit(self):
+        if self._auto_commit:
+            self._conn.commit()

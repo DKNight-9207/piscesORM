@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Type, Any
 from ..table import Table
 from abc import ABC, abstractmethod
-from ..operator import LogicalOperator
+from ..operator import Operator
 
 
 class BasicGenerator(ABC):
@@ -18,6 +18,29 @@ class BasicGenerator(ABC):
                       table already exists. Defaults to False.
         """
         ...
+
+    @staticmethod
+    @abstractmethod
+    def generate_create_join_table(table_1:Type[Table], table_2:Type[Table], exist_ok: bool = False) -> str:
+        """
+        Generates the SQL statement to create a join table between two tables.
+
+        Args:
+            table_1: The first table class you want to connect.
+            table_2: The second table class you want to connect.
+            exist_ok: If True, the statement will not raise an error if the
+                      table already exists. Defaults to False.
+        """
+        ...
+
+    '''
+    @staticmethod
+    @abstractmethod
+    def begin_transcation() -> str:
+        """
+        Generate the SQL statement to begin a transcation.
+        """
+    '''    
 
     @staticmethod
     @abstractmethod
@@ -56,21 +79,21 @@ class BasicGenerator(ABC):
 
     @staticmethod
     @abstractmethod
-    def generate_update_object(obj: Table, merge:bool = True) -> tuple[str, tuple[Any]]: 
+    def generate_update_object(obj: Table, cover:bool = False) -> tuple[str, tuple[Any]]: 
         """
         Generates the SQL statement to synchronize the object's data with the database.
 
         Args:
             obj: The object in the application whose data should be updated.
-            merge: The method used for synchronization.
-                   * True: Updates only the data that has changed.
-                   * False: Updates all data in the row.
+            cover: The method used for synchronization.
+                   * True: Updates all data in the row.
+                   * False: Updates only the data that has changed.
         """
         ...
 
     @staticmethod
     @abstractmethod
-    def generate_update(table: Type[Table], filters: LogicalOperator, **target) -> tuple[str, tuple[Any]]:
+    def generate_update(table: Type[Table], filters: Operator, **target) -> tuple[str, tuple[Any]]:
         """
         Generates the SQL statement to update values in the database.
 
@@ -83,7 +106,7 @@ class BasicGenerator(ABC):
 
     @staticmethod
     @abstractmethod
-    def generate_delete(obj_or_table: Table | Type[Table], filters) -> tuple[str, tuple[Any]]:
+    def generate_delete(obj_or_table: Table | Type[Table], filters: Operator=None) -> tuple[str, tuple[Any]]:
         """
         Generates the SQL statement to delete records from the database.
 
@@ -122,14 +145,19 @@ class BasicGenerator(ABC):
 
     @staticmethod
     @abstractmethod
-    def generate_select(table: Type[Table], filters) -> tuple[str, list]: 
+    def generate_select(table: Type[Table], columns:str|list[str]=None, filters=None, order_by:str|list[str]=None, limit:int=None, ref_obj:Table=None) -> tuple[str, list]: 
         """
         Generates the SQL statement for a SELECT query.
 
         Args:
             table: The table class from which to select.
+            columns: The columns to include in the SELECT query. Can be a string 
+                     or list of strings. Defaults to selecting all columns.
             filters: The conditions to filter the selection. Can be None if no
                      conditions are required.
+            order_by: Specifies the column(s) to sort the results by. Prefix a column 
+                      name with '-' for descending order, otherwise ascending.
+            limit: The maximum number of rows to return.
 
         Returns:
             A tuple containing the SQL statement and a list of values for

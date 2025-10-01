@@ -6,9 +6,9 @@ from enum import IntEnum, IntFlag, StrEnum
 from .column import Column
 logger = logger = logging.getLogger("piscesORM")
 
-class Integer(Column[int]):
+class Integer(Column):
     """
-    default integer.
+    int type in database.
     - enum: if you wanna use `IntEnum` or `IntFlag` in this column. It can hendle it.
     """
     def __init__(self, enum:IntEnum|IntFlag = None, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
@@ -20,7 +20,11 @@ class Integer(Column[int]):
             return self.enum(value)
         return super().from_db(value)
 
-class Text(Column[str]):
+class Text(Column):
+    """
+    str type in database.
+    - enum: if you wanna use `StrEnum` in this column. It can hendle it.
+    """
     def __init__(self, enum:StrEnum=None, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("TEXT", primary_key, not_null, auto_increment, unique, default, index)
         self.enum = enum
@@ -30,15 +34,20 @@ class Text(Column[str]):
             return self.enum(value)
         return super().from_db(value)
     
-class Blob(Column[bytes]):
+class Blob(Column):
+    """
+    bytes type in database.
+    """
     def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("BLOB", primary_key, not_null, auto_increment, unique, default, index)
 
-class Real(Column[float]):
+class Real(Column):
+    """
+    float type in database.
+    """
     def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("REAL", primary_key, not_null, auto_increment, unique, default, index)
 
-class Numeric(Column[Decimal]):
+class Numeric(Column):
     def __init__(self, primary_key:bool=False, not_null:bool=False, auto_increment:bool=False, unique:bool=False, default:Any=None, index:bool=False):
         super().__init__("NUMERIC", primary_key, not_null, auto_increment, unique, default, index)
-

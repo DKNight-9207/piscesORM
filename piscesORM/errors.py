@@ -73,6 +73,11 @@ class IllegalDefaultValue(PiscesError):
     def __init__(self, message):
         super().__init__(message)
 
+class IllegalOrderByValue(PiscesError):
+    def __init__(self):
+        message = f"`order_by` only support Column and str or pack them in list."
+        super().__init__(message)
+
 class PrimaryKeyConflict(PiscesError):
     def __init__(self):
         message = "Primary key conflict occurred."
@@ -87,7 +92,6 @@ class MissingReferenceObject(PiscesError):
     def __init__(self):
         message = "there's FieldRef in filter, but no ref obj input."
         super().__init__(message)
-
 
 # Lock errors
 class LockError(PiscesError):

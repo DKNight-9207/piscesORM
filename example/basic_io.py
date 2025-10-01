@@ -1,6 +1,6 @@
 from __future__ import annotations
 from piscesORM.table import Table
-from piscesORM.column import Text, Integer, Relationship, FieldRef
+from piscesORM.column import Text, Integer, Relationship, PluralRelationship, FieldRef, ColumnRef
 from piscesORM.engine import SyncSQLiteEngine
 import os
 
@@ -9,7 +9,7 @@ class Author(Table):
     id = Integer(primary_key=True, auto_increment=True)
     name = Text()
     age = Integer()
-    books = Relationship('Book', plural_data=True, author_name=FieldRef('name'))
+    books = PluralRelationship('Book', ColumnRef("author_name")==FieldRef('name'))
 
 class Book(Table):
     __table_name__ = "books"
