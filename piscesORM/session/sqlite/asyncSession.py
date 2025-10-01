@@ -109,7 +109,9 @@ class AsyncSQLiteSession(AsyncBaseSession):
         return await self._get_all(table, *filters, order_by, limit, **kwargs)
        
     async def update(self, table, *filters, **set):
-        sql, values = self._generator.generate_update(table, *filters, **set)
+        condition = self._combine_filters(*filters)
+        
+        sql, values = self._generator.generate_update(table, condition, **set)
         await self._run_sql(sql, values)
         await self._maybe_commit()
 

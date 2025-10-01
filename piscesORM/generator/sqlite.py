@@ -5,7 +5,8 @@ import logging
 from .. import errors
 import warnings
 from . import BasicGenerator
-from ..operator.translate import translate_sqlite_security
+from ..operator import Operator
+from ..operator.translate.sqlite import SQLITE_TRANSLATE_MAP, translate_sqlite_security
 logger = logging.getLogger("piscesORM")
 
 class SQLiteGenerator(BasicGenerator):
@@ -141,7 +142,7 @@ class SQLiteGenerator(BasicGenerator):
         return sql, tuple(set_values + where_values)
     
     @staticmethod
-    def generate_update(table:Type[Table], *filters, **target):
+    def generate_update(table:Type[Table], filters, **target):
         table_name = table.__table_name__ or table.__name__
         set_parts = []
         set_values = []
@@ -151,8 +152,13 @@ class SQLiteGenerator(BasicGenerator):
         for col_name, value in target.items():
             if col_name not in key_list:
                 raise errors.NoSuchColumn(col_name)
-            set_parts.append(f"{col_name} = ?")
-            set_values.append(table._columns[col_name].to_db(value))
+            
+            if isinstance(value, Operator):
+                set_parts.append(f"{col_name} = {col_name} {SQLITE_TRANSLATE_MAP[type(value)]} ?")
+                set_values.append(table._columns[col_name].to_db(value.parts[0]))
+            else:
+                set_parts.append(f"{col_name} = ?")
+                set_values.append(table._columns[col_name].to_db(value))
             
 
         sql = f"UPDATE {table_name} SET {', '.join(set_parts)} WHERE {where_sql}"

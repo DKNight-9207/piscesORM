@@ -49,7 +49,7 @@ The name **"Pisces"** reflects the dual nature of the ORM—it seamlessly suppor
 
   * 查詢時物件一次性打包完成，完全不依賴 Session。
   * 同步與非同步方法皆有提供，且命名一致。
-  * **「自認」比 sqlachmary 更加新手友善的編寫方式**
+  * **「自認」比 SQLAlchemy 更加新手友善的編寫方式**
   * 支援動態更新資料庫結構，對於開發初期結構尚未穩定的專案十分友好。
 
 > ⚠️ 注意：資料庫結構更新有一定風險，請務必記得備份。

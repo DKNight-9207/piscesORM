@@ -1,0 +1,1 @@
+from .logger import enable_debug

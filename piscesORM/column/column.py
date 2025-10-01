@@ -78,9 +78,45 @@ class Column:
         return operator.IsIn(self, value)
     
     def like(self, value):
+        """Generates an SQL condition for case-insensitive partial string matching (ILIKE/LIKE).
+
+        This is used to find records where the column's value partially matches 
+        the provided string.
+
+        Args:
+            value (str): The search string for the partial match.
+                         
+                         **CRITICAL**: You must include the SQL wildcard character 
+                         ('**%**') in the `value` to perform partial matching.
+                         
+                         Examples:
+                         - '%Harry Potter%' to find titles containing "Harry Potter"
+                         - 'Harry%' to find titles starting with "Harry"
+
+        Returns:
+            operator.ILike: An ILike operator object for query construction.
+        """
         return operator.Like(self, value)
     
     def ilike(self, value):
+        """Generates an SQL condition for case-insensitive partial string matching (ILIKE/LIKE).
+
+        This is used to find records where the column's value partially matches 
+        the provided string.
+
+        Args:
+            value (str): The search string for the partial match.
+                         
+                         **CRITICAL**: You must include the SQL wildcard character 
+                         ('**%**') in the `value` to perform partial matching.
+                         
+                         Examples:
+                         - '%Harry Potter%' to find titles containing "Harry Potter"
+                         - 'Harry%' to find titles starting with "Harry"
+
+        Returns:
+            operator.ILike: An ILike operator object for query construction.
+        """
         return operator.ILike(self, value)
     
 

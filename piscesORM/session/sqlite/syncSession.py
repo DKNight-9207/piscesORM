@@ -155,7 +155,9 @@ class SyncSQLiteSession(SyncBaseSession):
         return self._get_all(table, *filters, order_by=order_by, limit=limit, **kwargs)
         
     def update(self, table, *filters, **set):
-        sql, values = self._generator.generate_update(table, *filters, **set)
+        condition = self._combine_filters(*filters)
+        
+        sql, values = self._generator.generate_update(table, condition, **set)
         self._run_sql(sql, values)
         self._maybe_commit()
 
@@ -265,6 +267,8 @@ class SyncSQLiteSession(SyncBaseSession):
     @staticmethod
     def _fix_order(orders) -> list[str]:
         combine_order = []
+        if not orders:
+            return []
         if not isinstance(orders, list):
             orders = [orders] 
 
